@@ -1,4 +1,5 @@
 use clap::Args;
+use sha2::{Digest, Sha256};
 use yasecret_sync::{doc_manager, node::SyncNode};
 
 #[derive(Args)]
@@ -17,8 +18,13 @@ pub async fn run(args: JoinArgs) -> yasecret_core::Result<()> {
     let path = crate::unlock::db_path(args.db.as_deref());
     let session = crate::unlock::unlock(&path, args.password.as_deref())?;
 
-    let data_dir = path.parent().unwrap().join("sync");
-    let sync_key: [u8; 32] = (*session.db_key)[..32].try_into().unwrap();
+    let data_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("sync");
+    let sync_key: [u8; 32] = {
+        let mut h = Sha256::new();
+        h.update(b"yasecret-sync-key-v1");
+        h.update(&session.identity.secret_key);
+        h.finalize().into()
+    };
     let node = SyncNode::start(&data_dir, &sync_key)
         .await
         .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;

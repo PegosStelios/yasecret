@@ -20,4 +20,5 @@ dirs          = { workspace = true }
 zeroize       = { workspace = true }
 tokio         = { workspace = true }
 hex           = { workspace = true }
+sha2          = { workspace = true }
 rusqlite      = { workspace = true }

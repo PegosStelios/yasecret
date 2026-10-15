@@ -77,6 +77,21 @@ pub async fn push_peer_key(
 
 // ── Apply helpers (called from subscribe_and_apply + tests) ──────────────────
 
+/// Store the ECDH-encrypted project key blob that the owner sent for this peer.
+/// Called by `subscribe_and_apply` when a `peer_key/<peer_id>` entry arrives.
+pub fn apply_peer_key_entry(
+    db: &Db,
+    project_id: &str,
+    peer_id: &str,
+    encrypted_blob: &[u8],
+) -> Result<()> {
+    db.conn().execute(
+        "INSERT OR REPLACE INTO peer_project_key (project_id, peer_id, encrypted_key) VALUES (?1, ?2, ?3)",
+        rusqlite::params![project_id, peer_id, encrypted_blob],
+    )?;
+    Ok(())
+}
+
 /// Apply a SyncRole to the local DB.
 /// Verifies the Ed25519 signature; silently drops the entry if invalid.
 /// `owner_vk_bytes`: owner's Ed25519 verifying key bytes (32 bytes).
@@ -116,9 +131,9 @@ pub fn subscribe_and_apply(
     db_password: String,
     node: Arc<SyncNode>,
     doc_id: String,
+    project_id: String,
     owner_vk_bytes: [u8; 32],
     our_identity: Identity,
-    _db_key: [u8; 32],
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let ns: iroh_docs::NamespaceId = match doc_id.parse() {
@@ -149,12 +164,13 @@ pub fn subscribe_and_apply(
             let db_password2 = db_password.clone();
             let our_id = our_identity.clone();
             let owner_pk = owner_vk_bytes;
+            let proj_id2 = project_id.clone();
             tokio::task::spawn_blocking(move || {
                 let db = match Db::open(&db_path2, &db_password2) {
                     Ok(d) => d,
                     Err(_) => return,
                 };
-                let _ = apply_entry(&db, &entry_key, &blob_bytes, &owner_pk, &our_id);
+                let _ = apply_entry(&db, &entry_key, &blob_bytes, &owner_pk, &our_id, &proj_id2);
             })
             .await
             .ok();
@@ -168,6 +184,7 @@ fn apply_entry(
     content: &[u8],
     owner_vk_bytes: &[u8; 32],
     our_identity: &Identity,
+    project_id: &str,
 ) {
     if key == "project/meta" {
         if let Ok(meta) = serde_json::from_slice::<SyncProjectMeta>(content) {
@@ -188,10 +205,7 @@ fn apply_entry(
     } else if key.starts_with("peer_key/") {
         let our_peer_id = hex::encode(our_identity.x25519_public().as_bytes());
         if key == format!("peer_key/{our_peer_id}") {
-            // The encrypted blob is written by the owner via store_peer_key before sharing.
-            // On the joiner side, peer_key::load_my_peer_key reads from peer_project_key table.
-            // No additional write needed here — the CLI join flow handles it explicitly.
-            let _ = our_peer_id;
+            let _ = apply_peer_key_entry(db, project_id, &our_peer_id, content);
         }
     }
 }

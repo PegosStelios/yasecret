@@ -1,12 +1,39 @@
 use tempfile::tempdir;
 use yasecret_core::{crypto, db::Db, environment, identity, project, project_key, role};
 use yasecret_sync::{
-    applier::{apply_role_entry, push_env_meta, push_peer_key, push_project_meta, push_secret},
+    applier::{apply_peer_key_entry, apply_role_entry, push_env_meta, push_peer_key, push_project_meta, push_secret},
     doc_manager,
     node::SyncNode,
+    peer_key::load_my_peer_key,
     types::{SyncEnvMeta, SyncProjectMeta, SyncRole, SyncSecret},
 };
 use zeroize::Zeroizing;
+
+/// C1 fix: apply_peer_key_entry must write encrypted blob to peer_project_key table
+/// so that load_my_peer_key can find it on the joiner side.
+#[test]
+fn apply_peer_key_entry_enables_load_my_peer_key() {
+    let dir = tempdir().unwrap();
+    let (db, db_key) = seed(&dir);
+    let owner = identity::load_or_create(&db, "owner").unwrap();
+    let joiner = identity::load_or_create(&db, "joiner-same-db").unwrap();
+    // Use owner as project owner, joiner as the peer
+    let proj = project::create(&db, "app-c1", None, &owner.id).unwrap();
+    project_key::create(&db, &proj.id, &db_key).unwrap();
+    let proj_key = project_key::load(&db, &proj.id, &db_key).unwrap();
+
+    // Simulate share: encrypt proj_key for joiner's X25519 pub key
+    let joiner_pub: [u8; 32] = *joiner.x25519_public().as_bytes();
+    let joiner_peer_id = hex::encode(joiner_pub);
+    let encrypted_blob = yasecret_core::crypto::encrypt_for_peer(&*proj_key, &joiner_pub).unwrap();
+
+    // The subscriber calls apply_peer_key_entry when it receives the blob
+    apply_peer_key_entry(&db, &proj.id, &joiner_peer_id, &encrypted_blob).unwrap();
+
+    // Now joiner should be able to load the key
+    let loaded = load_my_peer_key(&db, &proj.id, &joiner).unwrap();
+    assert_eq!(&*loaded, &*proj_key, "loaded key must match original project key");
+}
 
 async fn make_node(dir: &tempfile::TempDir) -> SyncNode {
     SyncNode::start(dir.path(), &[1u8; 32]).await.unwrap()

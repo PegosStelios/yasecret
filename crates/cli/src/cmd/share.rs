@@ -1,4 +1,5 @@
 use clap::Args;
+use sha2::{Digest, Sha256};
 use yasecret_core::{environment, project, project_key, secret};
 use yasecret_sync::{
     applier::{push_env_meta, push_peer_key, push_project_meta, push_secret},
@@ -40,8 +41,14 @@ pub async fn run(args: ShareArgs) -> yasecret_core::Result<()> {
 
     let proj_key = project_key::load(&session.db, &proj.id, &session.db_key)?;
 
-    let data_dir = path.parent().unwrap().join("sync");
-    let sync_key: [u8; 32] = (*session.db_key)[..32].try_into().unwrap();
+    let data_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("sync");
+    // Derive iroh node key from identity secret key, domain-separated from db_key.
+    let sync_key: [u8; 32] = {
+        let mut h = Sha256::new();
+        h.update(b"yasecret-sync-key-v1");
+        h.update(&session.identity.secret_key);
+        h.finalize().into()
+    };
     let node = SyncNode::start(&data_dir, &sync_key)
         .await
         .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;
@@ -86,10 +93,7 @@ pub async fn run(args: ShareArgs) -> yasecret_core::Result<()> {
             .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;
 
         for s in secret::list(&session.db, &env.id)? {
-            let (enc, nonce) = yasecret_core::crypto::encrypt(&s.encrypted_value, &proj_key)
-                .map_err(|_| yasecret_core::YasecretError::Crypto)?;
-            // s.encrypted_value is already encrypted; re-encrypt would double-encrypt.
-            // Sync the raw ciphertext bytes directly.
+            // Send the DB's already-encrypted bytes directly — no re-encryption.
             let sync_secret = SyncSecret {
                 id: s.id.clone(),
                 key: s.key.clone(),
@@ -100,8 +104,6 @@ pub async fn run(args: ShareArgs) -> yasecret_core::Result<()> {
                 created_by: s.created_by.clone(),
                 expires_at: s.expires_at,
             };
-            let _ = enc; // unused — we send the DB's already-encrypted bytes
-            let _ = nonce;
             push_secret(&node, &doc_id, &env.id, &sync_secret, author)
                 .await
                 .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;
