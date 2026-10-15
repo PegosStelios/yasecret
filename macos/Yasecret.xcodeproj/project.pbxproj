@@ -17,6 +17,7 @@
 		484FF260107AFA869E8103C0 /* SecretsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44C0E6DE7B76E820EB6DBFFF /* SecretsViewModel.swift */; };
 		53999DE78666B183BB40D436 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CA24F70E7C7A39A1B1C993 /* AppState.swift */; };
 		5584F387497259E0C0FEE537 /* BiometricService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9793A6C5EA5C712EF40EA9FF /* BiometricService.swift */; };
+		5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98853CE4277C080D4AB59E3A /* ImportExportTests.swift */; };
 		6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */; };
 		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
 		7B771A70FD1E0D4F68A2D891 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */; };
@@ -58,6 +59,7 @@
 		9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FfiSmokeTests.swift; sourceTree = "<group>"; };
 		975739D0B039908603A08DAA /* BridgingHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
 		9793A6C5EA5C712EF40EA9FF /* BiometricService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricService.swift; sourceTree = "<group>"; };
+		98853CE4277C080D4AB59E3A /* ImportExportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportExportTests.swift; sourceTree = "<group>"; };
 		9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YasecretTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A87752CB6A8A7C7A4350AE88 /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		AB5312C507CE87A55E91465D /* EnvironmentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentListView.swift; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */,
+				98853CE4277C080D4AB59E3A /* ImportExportTests.swift */,
 				657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */,
 				FFAF40D749444730951A336E /* UnlockViewModelTests.swift */,
 			);
@@ -318,6 +321,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */,
+				5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */,
 				0E0D3AB2098DB7705FA63F5D /* SecretsViewModelTests.swift in Sources */,
 				091842D5658EBDC87F5E3F1C /* UnlockViewModelTests.swift in Sources */,
 			);
