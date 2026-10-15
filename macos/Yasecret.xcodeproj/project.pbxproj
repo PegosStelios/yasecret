@@ -20,6 +20,7 @@
 		5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98853CE4277C080D4AB59E3A /* ImportExportTests.swift */; };
 		6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */; };
 		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
+		74349B909E2A016ED93C0E17 /* McpTofuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4C1301B50B4CB590C1A037 /* McpTofuTests.swift */; };
 		7B771A70FD1E0D4F68A2D891 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */; };
 		8BE739596B84AF0EAC8A9C93 /* NewSecretView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9B5BF880DEB3C21F29BAE6 /* NewSecretView.swift */; };
 		A1E0649A7BDB3878F817B6F7 /* EnvironmentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5312C507CE87A55E91465D /* EnvironmentListView.swift */; };
@@ -51,6 +52,7 @@
 		44C0E6DE7B76E820EB6DBFFF /* SecretsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsViewModel.swift; sourceTree = "<group>"; };
 		45960E3AAFF9407520DE2528 /* SecretListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretListView.swift; sourceTree = "<group>"; };
 		4E9043E58BC3AA04986C0A83 /* UnlockViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockViewModel.swift; sourceTree = "<group>"; };
+		4F4C1301B50B4CB590C1A037 /* McpTofuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = McpTofuTests.swift; sourceTree = "<group>"; };
 		54B22A270A3CD24B9B5C6B5A /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsViewModelTests.swift; sourceTree = "<group>"; };
 		736766C25F7D128CEC23697B /* yasecret_ffiFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = yasecret_ffiFFI.h; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 			children = (
 				9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */,
 				98853CE4277C080D4AB59E3A /* ImportExportTests.swift */,
+				4F4C1301B50B4CB590C1A037 /* McpTofuTests.swift */,
 				657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */,
 				FFAF40D749444730951A336E /* UnlockViewModelTests.swift */,
 			);
@@ -322,6 +325,7 @@
 			files = (
 				6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */,
 				5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */,
+				74349B909E2A016ED93C0E17 /* McpTofuTests.swift in Sources */,
 				0E0D3AB2098DB7705FA63F5D /* SecretsViewModelTests.swift in Sources */,
 				091842D5658EBDC87F5E3F1C /* UnlockViewModelTests.swift in Sources */,
 			);
