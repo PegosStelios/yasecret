@@ -1,0 +1,491 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		53999DE78666B183BB40D436 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CA24F70E7C7A39A1B1C993 /* AppState.swift */; };
+		6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */; };
+		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
+		A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F812ACEDBE3856E75387F03 /* YasecretApp.swift */; };
+		BE947BDC26162F352A3EBA5F /* yasecret_ffi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		41B13FE019F1FF813648939B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5BB2F13419C0148BE13EA3B5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BAA738DCCD794611F84238A3;
+			remoteInfo = Yasecret;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0F812ACEDBE3856E75387F03 /* YasecretApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YasecretApp.swift; sourceTree = "<group>"; };
+		309EFCDBF091ACC9147EE59B /* LoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingView.swift; sourceTree = "<group>"; };
+		736766C25F7D128CEC23697B /* yasecret_ffiFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = yasecret_ffiFFI.h; sourceTree = "<group>"; };
+		7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = yasecret_ffi.swift; sourceTree = "<group>"; };
+		8BF07600118A89312F388E7F /* yasecret_ffiFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = yasecret_ffiFFI.modulemap; sourceTree = "<group>"; };
+		9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FfiSmokeTests.swift; sourceTree = "<group>"; };
+		975739D0B039908603A08DAA /* BridgingHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
+		9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YasecretTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC0474A09FF57C4E5635E230 /* Yasecret.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yasecret.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F7CA24F70E7C7A39A1B1C993 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		06D012C392B238DF8BACEB31 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CC0474A09FF57C4E5635E230 /* Yasecret.app */,
+				9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		21562568D7E10C2D3D3E0221 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		4979B63FEA26AE68347D3EB9 /* Placeholder */ = {
+			isa = PBXGroup;
+			children = (
+				309EFCDBF091ACC9147EE59B /* LoadingView.swift */,
+			);
+			path = Placeholder;
+			sourceTree = "<group>";
+		};
+		5263EE1B13FDA523AC8D7CAF /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				975739D0B039908603A08DAA /* BridgingHeader.h */,
+				C942096E84567BD006733F55 /* App */,
+				C37160231E6BD4753B92E833 /* Views */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		77B83C7034020DFC30B1E886 /* Generated */ = {
+			isa = PBXGroup;
+			children = (
+				7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */,
+				736766C25F7D128CEC23697B /* yasecret_ffiFFI.h */,
+				8BF07600118A89312F388E7F /* yasecret_ffiFFI.modulemap */,
+			);
+			path = Generated;
+			sourceTree = "<group>";
+		};
+		803C45613E56B6955B7AEBF5 = {
+			isa = PBXGroup;
+			children = (
+				77B83C7034020DFC30B1E886 /* Generated */,
+				5263EE1B13FDA523AC8D7CAF /* Sources */,
+				21562568D7E10C2D3D3E0221 /* Tests */,
+				06D012C392B238DF8BACEB31 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C37160231E6BD4753B92E833 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4979B63FEA26AE68347D3EB9 /* Placeholder */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		C942096E84567BD006733F55 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				F7CA24F70E7C7A39A1B1C993 /* AppState.swift */,
+				0F812ACEDBE3856E75387F03 /* YasecretApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B9D36628D0302235CF6C0990 /* YasecretTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BCAE96C0F37E6693F6678734 /* Build configuration list for PBXNativeTarget "YasecretTests" */;
+			buildPhases = (
+				D93CDC06E5B1179030B3924C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CACA8CDA7BDC0C636E14327D /* PBXTargetDependency */,
+			);
+			name = YasecretTests;
+			packageProductDependencies = (
+			);
+			productName = YasecretTests;
+			productReference = 9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		BAA738DCCD794611F84238A3 /* Yasecret */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40C2995B52D0C80B3DAA489D /* Build configuration list for PBXNativeTarget "Yasecret" */;
+			buildPhases = (
+				E9B1A8E124A74B8FAF897AC3 /* Build Rust FFI */,
+				CF4DC5A2FDC4E705F5220461 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Yasecret;
+			packageProductDependencies = (
+			);
+			productName = Yasecret;
+			productReference = CC0474A09FF57C4E5635E230 /* Yasecret.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5BB2F13419C0148BE13EA3B5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 7CE52D83427DBCB4D9DE712E /* Build configuration list for PBXProject "Yasecret" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 803C45613E56B6955B7AEBF5;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 06D012C392B238DF8BACEB31 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BAA738DCCD794611F84238A3 /* Yasecret */,
+				B9D36628D0302235CF6C0990 /* YasecretTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		E9B1A8E124A74B8FAF897AC3 /* Build Rust FFI */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust FFI";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Generated/yasecret_ffi.swift",
+				"$(SRCROOT)/Generated/yasecret_ffiFFI.h",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Scripts/build_rust.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CF4DC5A2FDC4E705F5220461 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				53999DE78666B183BB40D436 /* AppState.swift in Sources */,
+				6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */,
+				A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */,
+				BE947BDC26162F352A3EBA5F /* yasecret_ffi.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D93CDC06E5B1179030B3924C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CACA8CDA7BDC0C636E14327D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BAA738DCCD794611F84238A3 /* Yasecret */;
+			targetProxy = 41B13FE019F1FF813648939B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		01136263090349D754A061A2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../target/debug",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(SRCROOT)/../target/debug",
+					"-lyasecret_ffi",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
+				PRODUCT_NAME = Yasecret;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Generated",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Sources/BridgingHeader.h";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Release;
+		};
+		0591B6D140D5D087B75AB25D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		47EE0AF5DF844B67940295EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../target/debug",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-L$(SRCROOT)/../target/debug",
+					"-lyasecret_ffi",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
+				PRODUCT_NAME = Yasecret;
+				SDKROOT = macosx;
+				SWIFT_INCLUDE_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Generated",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/Sources/BridgingHeader.h";
+				SWIFT_VERSION = 5.9;
+			};
+			name = Debug;
+		};
+		99E1E439559B904B5213C8C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		B7AEC3CEA341B2F880499F04 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.YasecretTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yasecret.app/Contents/MacOS/Yasecret";
+			};
+			name = Debug;
+		};
+		CE450367872675087FE57D41 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.YasecretTests;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.9;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yasecret.app/Contents/MacOS/Yasecret";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		40C2995B52D0C80B3DAA489D /* Build configuration list for PBXNativeTarget "Yasecret" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				47EE0AF5DF844B67940295EE /* Debug */,
+				01136263090349D754A061A2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7CE52D83427DBCB4D9DE712E /* Build configuration list for PBXProject "Yasecret" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99E1E439559B904B5213C8C3 /* Debug */,
+				0591B6D140D5D087B75AB25D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BCAE96C0F37E6693F6678734 /* Build configuration list for PBXNativeTarget "YasecretTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7AEC3CEA341B2F880499F04 /* Debug */,
+				CE450367872675087FE57D41 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5BB2F13419C0148BE13EA3B5 /* Project object */;
+}

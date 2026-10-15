@@ -1,0 +1,58 @@
+name: Yasecret
+options:
+  bundleIdPrefix: com.yasecret
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15"
+
+targets:
+  Yasecret:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+      - path: Generated
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Yasecret
+        NSHumanReadableDescription: "Local-first secrets manager"
+        NSFaceIDUsageDescription: "Used to unlock your secret vault"
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        PRODUCT_NAME: Yasecret
+        PRODUCT_BUNDLE_IDENTIFIER: com.yasecret.app
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-L$(SRCROOT)/../target/debug"
+          - "-lyasecret_ffi"
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../target/debug"
+        SWIFT_INCLUDE_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Generated"
+        SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/Sources/BridgingHeader.h"
+    preBuildScripts:
+      - name: "Build Rust FFI"
+        script: '"${SRCROOT}/Scripts/build_rust.sh"'
+        outputFiles:
+          - "$(SRCROOT)/Generated/yasecret_ffi.swift"
+          - "$(SRCROOT)/Generated/yasecret_ffiFFI.h"
+
+  YasecretTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Yasecret
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        GENERATE_INFOPLIST_FILE: YES
