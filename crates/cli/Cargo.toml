@@ -29,3 +29,4 @@ rmcp          = { workspace = true }
 schemars      = { workspace = true }
 serde         = { workspace = true }
 rusqlite      = { workspace = true }
+uuid          = { workspace = true }

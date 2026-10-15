@@ -37,6 +37,30 @@ fn seed_db_with_secrets(dir: &tempfile::TempDir) -> std::path::PathBuf {
     db_path
 }
 
+// ── Final review fix: TOFU test ───────────────────────────────────────────────
+
+#[test]
+fn mcp_run_inserts_tofu_token_on_first_start() {
+    use std::process::Stdio;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db(&dir);
+    // Run `yasecret mcp` with stdin=null so the MCP server reads EOF and exits.
+    // TOFU insert happens before serve(), so the row must be present after exit.
+    let _ = Command::new(yasecret_bin())
+        .args(["mcp", "--db", &db_path.to_string_lossy(), "--password", "testpw"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .expect("failed to run yasecret mcp");
+
+    let db = Db::open(&db_path, "testpw").unwrap();
+    let count: i64 = db.conn()
+        .query_row("SELECT count(*) FROM mcp_session", [], |r| r.get(0))
+        .unwrap_or(0);
+    assert_eq!(count, 1, "mcp_session must have exactly 1 TOFU row after first start");
+}
+
 // ── Task 1 test ───────────────────────────────────────────────────────────────
 
 #[test]
