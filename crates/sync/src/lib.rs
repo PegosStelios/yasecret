@@ -22,6 +22,8 @@ pub enum SyncError {
     NoPeerKey,
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("db: {0}")]
+    Db(#[from] rusqlite::Error),
 }
 
 pub type Result<T> = std::result::Result<T, SyncError>;
