@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 @Observable
 final class AppState {
     var session: YasecretSession?
@@ -14,7 +15,8 @@ final class AppState {
             lastKnownMcpCount = Int(count)
         }
         mcpPollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.pollMcpSession()
+            guard let self else { return }
+            Task { @MainActor in self.pollMcpSession() }
         }
     }
 

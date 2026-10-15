@@ -15,6 +15,7 @@ final class SecretsViewModel {
 
     func createSecret(projectId: String, envId: String, key: String, value: String,
                       expiresAt: Int64?, session: YasecretSession) {
+        errorMessage = nil
         do {
             let s = try session.createSecret(
                 projectId: projectId, envId: envId, key: key, value: value, expiresAt: expiresAt)

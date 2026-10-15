@@ -14,19 +14,32 @@ struct UnlockView: View {
                 .font(.largeTitle.bold())
 
             if let vm {
+                if vm.isFirstRun {
+                    Text("Create your master password")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
                 SecureField("Master password", text: Bindable(vm).password)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 260)
                     .onSubmit { Task { await vm.unlock() } }
 
+                if vm.isFirstRun {
+                    SecureField("Confirm password", text: Bindable(vm).confirmPassword)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 260)
+                }
+
                 if let err = vm.errorMessage {
                     Text(err).foregroundStyle(.red).font(.caption)
                 }
 
-                Button(vm.isUnlocking ? "Unlocking…" : "Unlock") {
+                Button(vm.isUnlocking ? "Unlocking…" : (vm.isFirstRun ? "Create Vault" : "Unlock")) {
                     Task { await vm.unlock() }
                 }
-                .disabled(vm.isUnlocking || vm.password.isEmpty)
+                .disabled(vm.isUnlocking || vm.password.isEmpty ||
+                          (vm.isFirstRun && vm.confirmPassword.isEmpty))
                 .buttonStyle(.borderedProminent)
             }
         }

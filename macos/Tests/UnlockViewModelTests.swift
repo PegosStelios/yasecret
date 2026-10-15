@@ -1,6 +1,7 @@
 import XCTest
 @testable import Yasecret
 
+@MainActor
 final class UnlockViewModelTests: XCTestCase {
 
     func testKeychainSaveAndLoad() throws {
@@ -35,7 +36,8 @@ final class UnlockViewModelTests: XCTestCase {
         let _ = try YasecretSession(dbPath: dbPath, password: "correct")
 
         let appState = AppState()
-        let vm = UnlockViewModel(appState: appState, dbPath: dbPath)
+        let vm = UnlockViewModel(appState: appState, dbPath: dbPath,
+                                 keychainAccount: "test-unlock-\(UUID())")
         vm.password = "correct"
         await vm.unlock()
 
@@ -52,7 +54,8 @@ final class UnlockViewModelTests: XCTestCase {
         let _ = try YasecretSession(dbPath: dbPath, password: "correct")
 
         let appState = AppState()
-        let vm = UnlockViewModel(appState: appState, dbPath: dbPath)
+        let vm = UnlockViewModel(appState: appState, dbPath: dbPath,
+                                 keychainAccount: "test-unlock-\(UUID())")
         vm.password = "wrong"
         await vm.unlock()
 

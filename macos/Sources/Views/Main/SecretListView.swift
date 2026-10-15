@@ -37,8 +37,6 @@ struct SecretListView: View {
                 Button {
                     guard let session = appState.session else { return }
                     if let exported = try? session.exportEnv(projectId: projectId, envId: envId) {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(exported, forType: .string)
                         let panel = NSSavePanel()
                         panel.nameFieldStringValue = ".env"
                         if panel.runModal() == .OK, let url = panel.url {

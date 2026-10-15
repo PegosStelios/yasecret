@@ -218,14 +218,24 @@ impl YasecretSession {
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
         let pairs = env_file::parse(&content)?;
+        db.conn().execute_batch("BEGIN")
+            .map_err(|e| FfiError::Db { msg: e.to_string() })?;
         let mut count = 0u32;
-        for (key, value) in &pairs {
-            yasecret_core::secret::create(
-                &db, &env_id, key, value.as_bytes(), &proj_key, &id, None,
-            )?;
-            count += 1;
+        let result: Result<u32, FfiError> = (|| {
+            for (key, value) in &pairs {
+                yasecret_core::secret::create(
+                    &db, &env_id, key, value.as_bytes(), &proj_key, &id, None,
+                )?;
+                count += 1;
+            }
+            Ok(count)
+        })();
+        match &result {
+            Ok(_) => db.conn().execute_batch("COMMIT")
+                .map_err(|e| FfiError::Db { msg: e.to_string() })?,
+            Err(_) => { db.conn().execute_batch("ROLLBACK").ok(); }
         }
-        Ok(count)
+        result
     }
 
     pub fn export_env(
@@ -256,17 +266,29 @@ impl YasecretSession {
 
     pub fn grant_mcp_access(&self) -> Result<(), FfiError> {
         let db = self.open()?;
+        // BEGIN IMMEDIATE acquires a write lock immediately, preventing a
+        // concurrent caller from inserting between our count check and insert.
+        db.conn().execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| FfiError::Db { msg: e.to_string() })?;
         let count: i64 = db.conn()
             .query_row("SELECT count(*) FROM mcp_session", [], |r| r.get(0))
             .unwrap_or(0);
-        if count == 0 {
-            let token = uuid::Uuid::new_v4().to_string();
-            db.conn().execute(
-                "INSERT INTO mcp_session (token, granted_at, label) VALUES (?1, ?2, ?3)",
-                rusqlite::params![&token, now(), "Claude Code"],
-            ).map_err(|e| FfiError::Db { msg: e.to_string() })?;
+        let result: Result<(), FfiError> = (|| {
+            if count == 0 {
+                let token = uuid::Uuid::new_v4().to_string();
+                db.conn().execute(
+                    "INSERT INTO mcp_session (token, granted_at, label) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![&token, now(), "Claude Code"],
+                ).map_err(|e| FfiError::Db { msg: e.to_string() })?;
+            }
+            Ok(())
+        })();
+        match &result {
+            Ok(_) => db.conn().execute_batch("COMMIT")
+                .map_err(|e| FfiError::Db { msg: e.to_string() })?,
+            Err(_) => { db.conn().execute_batch("ROLLBACK").ok(); }
         }
-        Ok(())
+        result
     }
 }
 
