@@ -13,3 +13,4 @@ pub mod secret;
 pub mod version;
 
 pub use error::{Result, YasecretError};
+pub use db::Db;
