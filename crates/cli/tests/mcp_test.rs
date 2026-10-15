@@ -37,6 +37,8 @@ fn seed_db_with_secrets(dir: &tempfile::TempDir) -> std::path::PathBuf {
     db_path
 }
 
+// ── Task 1 test ───────────────────────────────────────────────────────────────
+
 #[test]
 fn mcp_help_exits_cleanly() {
     let output = Command::new(yasecret_bin())
@@ -53,4 +55,124 @@ fn mcp_help_exits_cleanly() {
         stdout.to_lowercase().contains("mcp"),
         "output: {stdout}"
     );
+}
+
+// ── Task 2 tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn list_projects_returns_project_name() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.list_projects_impl();
+    assert!(result.contains("web"), "expected 'web' in: {result}");
+    assert!(result.contains("prod"), "expected 'prod' in: {result}");
+}
+
+#[test]
+fn list_secret_keys_returns_key_names_not_values() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.list_secret_keys_impl("web", "prod");
+    assert!(result.contains("DB_URL"), "expected 'DB_URL' in: {result}");
+    assert!(result.contains("API_KEY"), "expected 'API_KEY' in: {result}");
+    assert!(!result.contains("postgres://"), "must not contain plaintext value");
+    assert!(!result.contains("sk-abc123"), "must not contain plaintext value");
+}
+
+#[test]
+fn list_secret_keys_nonexistent_project_returns_error() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.list_secret_keys_impl("nonexistent", "prod");
+    assert!(result.contains("error"), "expected error string, got: {result}");
+    assert!(!result.contains("postgres://"), "must not leak values");
+}
+
+// ── Task 3 tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn run_with_secrets_masks_secret_value_in_output() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.run_with_secrets_impl(
+        "web",
+        "prod",
+        &["DB_URL".to_string()],
+        &["sh".to_string(), "-c".to_string(), "echo $DB_URL".to_string()],
+    );
+    assert!(!result.contains("postgres://"), "secret must be masked, got: {result}");
+    assert!(result.contains("[REDACTED]"), "expected [REDACTED] in: {result}");
+}
+
+#[test]
+fn run_with_secrets_captures_exit_status() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.run_with_secrets_impl(
+        "web",
+        "prod",
+        &[],
+        &["sh".to_string(), "-c".to_string(), "exit 42".to_string()],
+    );
+    assert!(result.contains("42"), "should include exit code 42: {result}");
+}
+
+// ── Task 4 tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn get_secret_blocked_without_allow_plaintext() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.get_secret_impl("web", "prod", "DB_URL");
+    assert!(
+        result.contains("error") || result.contains("disabled"),
+        "must be blocked when allow_plaintext=false, got: {result}"
+    );
+    assert!(!result.contains("postgres://"), "must not reveal value: {result}");
+}
+
+#[test]
+fn get_secret_returns_value_when_allowed() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), true);
+    let result = server.get_secret_impl("web", "prod", "DB_URL");
+    assert!(result.contains("postgres://"), "expected plaintext value, got: {result}");
+}
+
+#[test]
+fn import_env_creates_secrets() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let content = "NEW_KEY=new_value\nANOTHER=abc123\n";
+    let result = server.import_env_impl("web", "prod", content);
+    assert!(
+        result.contains("2") || result.contains("imported"),
+        "expected import count, got: {result}"
+    );
+}
+
+#[test]
+fn import_env_malformed_line_returns_error() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.import_env_impl("web", "prod", "NOEQUALS\n");
+    assert!(result.contains("error"), "expected error for malformed line, got: {result}");
 }
