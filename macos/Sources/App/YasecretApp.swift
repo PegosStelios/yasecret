@@ -6,12 +6,25 @@ struct YasecretApp: App {
 
     var body: some Scene {
         WindowGroup {
-            LoadingView()
-                .environment(appState)
+            if appState.isLocked {
+                UnlockView()
+                    .environment(appState)
+            } else {
+                MainView()
+                    .environment(appState)
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Lock") {
+                    appState.isLocked = true
+                    appState.session = nil
+                    appState.stopMcpPolling()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            }
         }
     }
 }
