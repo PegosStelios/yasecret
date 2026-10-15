@@ -1,0 +1,20 @@
+[package]
+name    = "yasecret-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name       = "yasecret_ffi"
+
+[dependencies]
+yasecret-core = { path = "../core" }
+uniffi        = { workspace = true }
+zeroize       = { workspace = true }
+dirs          = { workspace = true }
+thiserror     = "1"
+uuid          = { workspace = true }
+rusqlite      = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

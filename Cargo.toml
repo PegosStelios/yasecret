@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/cli", "crates/sync"]
+members = ["crates/core", "crates/cli", "crates/sync", "crates/ffi", "tools/uniffi-bindgen"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -29,3 +29,4 @@ iroh-gossip  = "0.101"
 futures-lite = "2"
 rmcp         = { version = "3.5.1", features = ["server", "macros", "transport-io", "schemars"] }
 schemars     = "1"
+uniffi       = { version = "0.28", features = ["build"] }
