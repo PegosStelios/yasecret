@@ -122,6 +122,11 @@ impl YasecretSession {
         Ok(FfiProject { id: p.id, name: p.name, description: p.description })
     }
 
+    pub fn rename_project(&self, project_id: String, new_name: String) -> Result<(), FfiError> {
+        let db = self.open()?;
+        Ok(yasecret_core::project::rename(&db, &project_id, &new_name)?)
+    }
+
     pub fn delete_project(&self, project_id: String) -> Result<(), FfiError> {
         let db = self.open()?;
         Ok(yasecret_core::project::delete(&db, &project_id)?)
@@ -141,6 +146,11 @@ impl YasecretSession {
         let db = self.open()?;
         let e = yasecret_core::environment::create(&db, &project_id, &name)?;
         Ok(FfiEnvironment { id: e.id, project_id: e.project_id, name: e.name })
+    }
+
+    pub fn rename_environment(&self, env_id: String, new_name: String) -> Result<(), FfiError> {
+        let db = self.open()?;
+        Ok(yasecret_core::environment::rename(&db, &env_id, &new_name)?)
     }
 
     pub fn delete_environment(&self, env_id: String) -> Result<(), FfiError> {

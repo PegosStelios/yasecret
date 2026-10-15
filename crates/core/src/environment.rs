@@ -50,6 +50,15 @@ pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 }
 
+pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
+    let n = db.conn().execute(
+        "UPDATE environment SET name = ?1 WHERE id = ?2",
+        rusqlite::params![new_name, id],
+    )?;
+    if n == 0 { return Err(YasecretError::NotFound(format!("environment {id}"))); }
+    Ok(())
+}
+
 pub fn delete(db: &Db, id: &str) -> Result<()> {
     db.conn()
         .execute("DELETE FROM environment WHERE id = ?1", [id])?;

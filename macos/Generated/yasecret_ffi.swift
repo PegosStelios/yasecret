@@ -502,6 +502,10 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func mcpSessionCount() throws  -> UInt32
     
+    func renameEnvironment(envId: String, newName: String) throws 
+    
+    func renameProject(projectId: String, newName: String) throws 
+    
     func updateSecret(projectId: String, secretId: String, newValue: String) throws 
     
 }
@@ -678,6 +682,22 @@ open func mcpSessionCount()throws  -> UInt32 {
     uniffi_yasecret_ffi_fn_method_yasecretsession_mcp_session_count(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+open func renameEnvironment(envId: String, newName: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_rename_environment(self.uniffiClonePointer(),
+        FfiConverterString.lower(envId),
+        FfiConverterString.lower(newName),$0
+    )
+}
+}
+    
+open func renameProject(projectId: String, newName: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_rename_project(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(newName),$0
+    )
+}
 }
     
 open func updateSecret(projectId: String, secretId: String, newValue: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
@@ -1263,6 +1283,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_mcp_session_count() != 20964) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_environment() != 57662) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_project() != 18318) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_update_secret() != 43832) {

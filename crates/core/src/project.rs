@@ -53,6 +53,15 @@ pub fn list(db: &Db) -> Result<Vec<Project>> {
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
 }
 
+pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
+    let n = db.conn().execute(
+        "UPDATE project SET name = ?1 WHERE id = ?2",
+        rusqlite::params![new_name, id],
+    )?;
+    if n == 0 { return Err(YasecretError::NotFound(format!("project {id}"))); }
+    Ok(())
+}
+
 pub fn delete(db: &Db, id: &str) -> Result<()> {
     db.conn()
         .execute("DELETE FROM project WHERE id = ?1", [id])?;

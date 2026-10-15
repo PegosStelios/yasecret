@@ -24,6 +24,17 @@ final class ProjectsViewModel {
         }
     }
 
+    func renameProject(id: String, newName: String, session: YasecretSession) {
+        do {
+            try session.renameProject(projectId: id, newName: newName)
+            if let idx = projects.firstIndex(where: { $0.id == id }) {
+                projects[idx] = FfiProject(id: projects[idx].id, name: newName, description: projects[idx].description)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func deleteProject(id: String, session: YasecretSession) {
         do {
             try session.deleteProject(projectId: id)

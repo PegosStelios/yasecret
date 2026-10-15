@@ -25,6 +25,17 @@ final class EnvironmentsViewModel {
         }
     }
 
+    func renameEnvironment(id: String, newName: String, session: YasecretSession) {
+        do {
+            try session.renameEnvironment(envId: id, newName: newName)
+            if let idx = environments.firstIndex(where: { $0.id == id }) {
+                environments[idx] = FfiEnvironment(id: environments[idx].id, projectId: environments[idx].projectId, name: newName)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func deleteEnvironment(id: String, session: YasecretSession) {
         do {
             try session.deleteEnvironment(envId: id)
