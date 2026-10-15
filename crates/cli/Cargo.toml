@@ -7,6 +7,10 @@ edition = "2021"
 name = "yasecret"
 path = "src/main.rs"
 
+[dev-dependencies]
+tempfile      = { workspace = true }
+yasecret-core = { path = "../core" }
+
 [dependencies]
 yasecret-core = { path = "../core" }
 clap          = { workspace = true }
