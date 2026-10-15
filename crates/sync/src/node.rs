@@ -71,6 +71,10 @@ impl SyncNode {
         &self.docs
     }
 
+    pub fn blob_store(&self) -> &iroh_blobs::api::Store {
+        self.engine.blob_store()
+    }
+
     pub async fn stop(self) {
         let _ = self.engine.shutdown().await;
         self.endpoint.close().await;
