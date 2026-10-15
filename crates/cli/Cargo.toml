@@ -13,7 +13,11 @@ yasecret-core = { path = "../core" }
 
 [dependencies]
 yasecret-core = { path = "../core" }
+yasecret-sync = { path = "../sync" }
 clap          = { workspace = true }
 rpassword     = { workspace = true }
 dirs          = { workspace = true }
 zeroize       = { workspace = true }
+tokio         = { workspace = true }
+hex           = { workspace = true }
+rusqlite      = { workspace = true }

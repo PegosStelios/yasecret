@@ -1,0 +1,26 @@
+[package]
+name    = "yasecret-sync"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yasecret-core = { path = "../core" }
+rusqlite      = { workspace = true }
+iroh          = { workspace = true }
+iroh-docs     = { workspace = true }
+iroh-blobs    = { workspace = true }
+iroh-gossip   = { workspace = true }
+anyhow        = { workspace = true }
+tokio         = { workspace = true }
+futures-lite  = { workspace = true }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+thiserror     = { workspace = true }
+zeroize       = { workspace = true }
+rand          = { workspace = true }
+hex           = { workspace = true }
+
+[dev-dependencies]
+tempfile      = { workspace = true }
+tokio         = { workspace = true }
+yasecret-core = { path = "../core" }
