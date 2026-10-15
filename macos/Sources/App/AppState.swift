@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 @MainActor
 @Observable
@@ -8,6 +9,34 @@ final class AppState {
     var mcpSessionCount: Int = 0
     private var lastKnownMcpCount: Int = 0
     private var mcpPollTimer: Timer?
+    private var lockObservers: [NSObjectProtocol] = []
+
+    init() {
+        installAutoLock()
+    }
+
+    func lock() {
+        stopMcpPolling()
+        session = nil
+        isLocked = true
+    }
+
+    /// Locks the vault when the Mac sleeps, the screen locks, or the user switches accounts.
+    private func installAutoLock() {
+        let ws = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification,
+                     NSWorkspace.screensDidSleepNotification,
+                     NSWorkspace.sessionDidResignActiveNotification] {
+            lockObservers.append(ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.lock() }
+            })
+        }
+        lockObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.lock() }
+        })
+    }
 
     func startMcpPolling() {
         NotificationService.shared.requestPermission()

@@ -6,12 +6,18 @@ final class EnvironmentsViewModel {
     var selectedEnvId: String?
     var errorMessage: String?
 
+    var selectedEnvironment: FfiEnvironment? {
+        environments.first { $0.id == selectedEnvId }
+    }
+
     func load(projectId: String, session: YasecretSession) {
         do {
             environments = try session.listEnvironments(projectId: projectId)
-            if selectedEnvId == nil { selectedEnvId = environments.first?.id }
+            if selectedEnvId == nil || !environments.contains(where: { $0.id == selectedEnvId }) {
+                selectedEnvId = environments.first?.id
+            }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
@@ -21,7 +27,17 @@ final class EnvironmentsViewModel {
             environments.append(e)
             selectedEnvId = e.id
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
+        }
+    }
+
+    func cloneEnvironment(id: String, newName: String, session: YasecretSession) {
+        do {
+            let e = try session.cloneEnvironment(envId: id, newName: newName)
+            environments.append(e)
+            selectedEnvId = e.id
+        } catch {
+            errorMessage = userMessage(error)
         }
     }
 
@@ -29,10 +45,10 @@ final class EnvironmentsViewModel {
         do {
             try session.renameEnvironment(envId: id, newName: newName)
             if let idx = environments.firstIndex(where: { $0.id == id }) {
-                environments[idx] = FfiEnvironment(id: environments[idx].id, projectId: environments[idx].projectId, name: newName)
+                environments[idx].name = newName
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
@@ -42,7 +58,7 @@ final class EnvironmentsViewModel {
             environments.removeAll { $0.id == id }
             if selectedEnvId == id { selectedEnvId = environments.first?.id }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 }

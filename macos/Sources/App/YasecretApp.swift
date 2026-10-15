@@ -18,11 +18,8 @@ struct YasecretApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button("Lock") {
-                    appState.isLocked = true
-                    appState.session = nil
-                    appState.stopMcpPolling()
-                }
+                Button("Lock Vault") { appState.lock() }
+                    .disabled(appState.isLocked)
                 .keyboardShortcut("l", modifiers: [.command, .shift])
             }
         }

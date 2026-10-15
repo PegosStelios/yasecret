@@ -59,6 +59,29 @@ pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn clone(db: &Db, source_id: &str, new_name: &str) -> Result<Environment> {
+    let src = get(db, source_id)?;
+    let e = create(db, &src.project_id, new_name)?;
+    let ts = now();
+    for s in crate::secret::list(db, source_id)? {
+        db.conn().execute(
+            "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret)
+             VALUES (?1,?2,?3,?4,?5,?6,?6,?7,?8,?9)",
+            rusqlite::params![new_id(), &e.id, &s.key, &s.encrypted_value, &s.nonce, ts, &s.created_by, s.expires_at, s.is_secret],
+        )?;
+    }
+    Ok(e)
+}
+
+pub fn secret_count(db: &Db, id: &str) -> Result<u32> {
+    let n: i64 = db.conn().query_row(
+        "SELECT count(*) FROM secret WHERE env_id = ?1",
+        [id],
+        |r| r.get(0),
+    )?;
+    Ok(n as u32)
+}
+
 pub fn delete(db: &Db, id: &str) -> Result<()> {
     db.conn()
         .execute("DELETE FROM environment WHERE id = ?1", [id])?;

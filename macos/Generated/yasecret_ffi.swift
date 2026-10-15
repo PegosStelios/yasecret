@@ -431,6 +431,30 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterBool : FfiConverter {
+    typealias FfiType = Int8
+    typealias SwiftType = Bool
+
+    public static func lift(_ value: Int8) throws -> Bool {
+        return value != 0
+    }
+
+    public static func lower(_ value: Bool) -> Int8 {
+        return value ? 1 : 0
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
@@ -474,17 +498,26 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 public protocol YasecretSessionProtocol : AnyObject {
     
+    func applyImport(projectId: String, envId: String, items: [FfiImportItem], overwrite: Bool) throws  -> FfiImportSummary
+    
+    func cloneEnvironment(envId: String, newName: String) throws  -> FfiEnvironment
+    
     func createEnvironment(projectId: String, name: String) throws  -> FfiEnvironment
     
     func createProject(name: String, description: String?) throws  -> FfiProject
     
-    func createSecret(projectId: String, envId: String, key: String, value: String, expiresAt: Int64?) throws  -> FfiSecret
+    func createSecret(projectId: String, envId: String, key: String, value: String, expiresAt: Int64?, isSecret: Bool) throws  -> FfiSecret
     
     func deleteEnvironment(envId: String) throws 
     
     func deleteProject(projectId: String) throws 
     
     func deleteSecret(secretId: String) throws 
+    
+    /**
+     * Changes any combination of key, value and kind in one transaction.
+     */
+    func editSecret(projectId: String, secretId: String, newKey: String?, newValue: String?, isSecret: Bool?) throws 
     
     func exportEnv(projectId: String, envId: String) throws  -> String
     
@@ -501,6 +534,8 @@ public protocol YasecretSessionProtocol : AnyObject {
     func listSecrets(envId: String) throws  -> [FfiSecret]
     
     func mcpSessionCount() throws  -> UInt32
+    
+    func previewImport(envId: String, content: String) throws  -> [FfiImportRow]
     
     func renameEnvironment(envId: String, newName: String) throws 
     
@@ -569,6 +604,26 @@ public convenience init(dbPath: String, password: String)throws  {
     
 
     
+open func applyImport(projectId: String, envId: String, items: [FfiImportItem], overwrite: Bool)throws  -> FfiImportSummary {
+    return try  FfiConverterTypeFfiImportSummary.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_apply_import(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(envId),
+        FfiConverterSequenceTypeFfiImportItem.lower(items),
+        FfiConverterBool.lower(overwrite),$0
+    )
+})
+}
+    
+open func cloneEnvironment(envId: String, newName: String)throws  -> FfiEnvironment {
+    return try  FfiConverterTypeFfiEnvironment.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_clone_environment(self.uniffiClonePointer(),
+        FfiConverterString.lower(envId),
+        FfiConverterString.lower(newName),$0
+    )
+})
+}
+    
 open func createEnvironment(projectId: String, name: String)throws  -> FfiEnvironment {
     return try  FfiConverterTypeFfiEnvironment.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_create_environment(self.uniffiClonePointer(),
@@ -587,14 +642,15 @@ open func createProject(name: String, description: String?)throws  -> FfiProject
 })
 }
     
-open func createSecret(projectId: String, envId: String, key: String, value: String, expiresAt: Int64?)throws  -> FfiSecret {
+open func createSecret(projectId: String, envId: String, key: String, value: String, expiresAt: Int64?, isSecret: Bool)throws  -> FfiSecret {
     return try  FfiConverterTypeFfiSecret.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_create_secret(self.uniffiClonePointer(),
         FfiConverterString.lower(projectId),
         FfiConverterString.lower(envId),
         FfiConverterString.lower(key),
         FfiConverterString.lower(value),
-        FfiConverterOptionInt64.lower(expiresAt),$0
+        FfiConverterOptionInt64.lower(expiresAt),
+        FfiConverterBool.lower(isSecret),$0
     )
 })
 }
@@ -616,6 +672,20 @@ open func deleteProject(projectId: String)throws  {try rustCallWithError(FfiConv
 open func deleteSecret(secretId: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_delete_secret(self.uniffiClonePointer(),
         FfiConverterString.lower(secretId),$0
+    )
+}
+}
+    
+    /**
+     * Changes any combination of key, value and kind in one transaction.
+     */
+open func editSecret(projectId: String, secretId: String, newKey: String?, newValue: String?, isSecret: Bool?)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_edit_secret(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(secretId),
+        FfiConverterOptionString.lower(newKey),
+        FfiConverterOptionString.lower(newValue),
+        FfiConverterOptionBool.lower(isSecret),$0
     )
 }
 }
@@ -680,6 +750,15 @@ open func listSecrets(envId: String)throws  -> [FfiSecret] {
 open func mcpSessionCount()throws  -> UInt32 {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_mcp_session_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+open func previewImport(envId: String, content: String)throws  -> [FfiImportRow] {
+    return try  FfiConverterSequenceTypeFfiImportRow.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_preview_import(self.uniffiClonePointer(),
+        FfiConverterString.lower(envId),
+        FfiConverterString.lower(content),$0
     )
 })
 }
@@ -768,13 +847,15 @@ public struct FfiEnvironment {
     public var id: String
     public var projectId: String
     public var name: String
+    public var secretCount: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, projectId: String, name: String) {
+    public init(id: String, projectId: String, name: String, secretCount: UInt32) {
         self.id = id
         self.projectId = projectId
         self.name = name
+        self.secretCount = secretCount
     }
 }
 
@@ -791,6 +872,9 @@ extension FfiEnvironment: Equatable, Hashable {
         if lhs.name != rhs.name {
             return false
         }
+        if lhs.secretCount != rhs.secretCount {
+            return false
+        }
         return true
     }
 
@@ -798,6 +882,7 @@ extension FfiEnvironment: Equatable, Hashable {
         hasher.combine(id)
         hasher.combine(projectId)
         hasher.combine(name)
+        hasher.combine(secretCount)
     }
 }
 
@@ -811,7 +896,8 @@ public struct FfiConverterTypeFfiEnvironment: FfiConverterRustBuffer {
             try FfiEnvironment(
                 id: FfiConverterString.read(from: &buf), 
                 projectId: FfiConverterString.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf)
+                name: FfiConverterString.read(from: &buf), 
+                secretCount: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -819,6 +905,7 @@ public struct FfiConverterTypeFfiEnvironment: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.projectId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
+        FfiConverterUInt32.write(value.secretCount, into: &buf)
     }
 }
 
@@ -835,6 +922,236 @@ public func FfiConverterTypeFfiEnvironment_lift(_ buf: RustBuffer) throws -> Ffi
 #endif
 public func FfiConverterTypeFfiEnvironment_lower(_ value: FfiEnvironment) -> RustBuffer {
     return FfiConverterTypeFfiEnvironment.lower(value)
+}
+
+
+public struct FfiImportItem {
+    public var key: String
+    public var value: String
+    public var isSecret: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, value: String, isSecret: Bool) {
+        self.key = key
+        self.value = value
+        self.isSecret = isSecret
+    }
+}
+
+
+
+extension FfiImportItem: Equatable, Hashable {
+    public static func ==(lhs: FfiImportItem, rhs: FfiImportItem) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.isSecret != rhs.isSecret {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(value)
+        hasher.combine(isSecret)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiImportItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiImportItem {
+        return
+            try FfiImportItem(
+                key: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf), 
+                isSecret: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiImportItem, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+        FfiConverterBool.write(value.isSecret, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportItem_lift(_ buf: RustBuffer) throws -> FfiImportItem {
+    return try FfiConverterTypeFfiImportItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportItem_lower(_ value: FfiImportItem) -> RustBuffer {
+    return FfiConverterTypeFfiImportItem.lower(value)
+}
+
+
+public struct FfiImportRow {
+    public var key: String
+    public var value: String
+    public var exists: Bool
+    public var suggestedSecret: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, value: String, exists: Bool, suggestedSecret: Bool) {
+        self.key = key
+        self.value = value
+        self.exists = exists
+        self.suggestedSecret = suggestedSecret
+    }
+}
+
+
+
+extension FfiImportRow: Equatable, Hashable {
+    public static func ==(lhs: FfiImportRow, rhs: FfiImportRow) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.exists != rhs.exists {
+            return false
+        }
+        if lhs.suggestedSecret != rhs.suggestedSecret {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(value)
+        hasher.combine(exists)
+        hasher.combine(suggestedSecret)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiImportRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiImportRow {
+        return
+            try FfiImportRow(
+                key: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf), 
+                exists: FfiConverterBool.read(from: &buf), 
+                suggestedSecret: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiImportRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+        FfiConverterBool.write(value.exists, into: &buf)
+        FfiConverterBool.write(value.suggestedSecret, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportRow_lift(_ buf: RustBuffer) throws -> FfiImportRow {
+    return try FfiConverterTypeFfiImportRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportRow_lower(_ value: FfiImportRow) -> RustBuffer {
+    return FfiConverterTypeFfiImportRow.lower(value)
+}
+
+
+public struct FfiImportSummary {
+    public var added: UInt32
+    public var updated: UInt32
+    public var skipped: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(added: UInt32, updated: UInt32, skipped: UInt32) {
+        self.added = added
+        self.updated = updated
+        self.skipped = skipped
+    }
+}
+
+
+
+extension FfiImportSummary: Equatable, Hashable {
+    public static func ==(lhs: FfiImportSummary, rhs: FfiImportSummary) -> Bool {
+        if lhs.added != rhs.added {
+            return false
+        }
+        if lhs.updated != rhs.updated {
+            return false
+        }
+        if lhs.skipped != rhs.skipped {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(added)
+        hasher.combine(updated)
+        hasher.combine(skipped)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiImportSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiImportSummary {
+        return
+            try FfiImportSummary(
+                added: FfiConverterUInt32.read(from: &buf), 
+                updated: FfiConverterUInt32.read(from: &buf), 
+                skipped: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiImportSummary, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.added, into: &buf)
+        FfiConverterUInt32.write(value.updated, into: &buf)
+        FfiConverterUInt32.write(value.skipped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportSummary_lift(_ buf: RustBuffer) throws -> FfiImportSummary {
+    return try FfiConverterTypeFfiImportSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiImportSummary_lower(_ value: FfiImportSummary) -> RustBuffer {
+    return FfiConverterTypeFfiImportSummary.lower(value)
 }
 
 
@@ -917,14 +1234,18 @@ public struct FfiSecret {
     public var envId: String
     public var key: String
     public var expiresAt: Int64?
+    public var isSecret: Bool
+    public var updatedAt: Int64
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, envId: String, key: String, expiresAt: Int64?) {
+    public init(id: String, envId: String, key: String, expiresAt: Int64?, isSecret: Bool, updatedAt: Int64) {
         self.id = id
         self.envId = envId
         self.key = key
         self.expiresAt = expiresAt
+        self.isSecret = isSecret
+        self.updatedAt = updatedAt
     }
 }
 
@@ -944,6 +1265,12 @@ extension FfiSecret: Equatable, Hashable {
         if lhs.expiresAt != rhs.expiresAt {
             return false
         }
+        if lhs.isSecret != rhs.isSecret {
+            return false
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return false
+        }
         return true
     }
 
@@ -952,6 +1279,8 @@ extension FfiSecret: Equatable, Hashable {
         hasher.combine(envId)
         hasher.combine(key)
         hasher.combine(expiresAt)
+        hasher.combine(isSecret)
+        hasher.combine(updatedAt)
     }
 }
 
@@ -966,7 +1295,9 @@ public struct FfiConverterTypeFfiSecret: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 envId: FfiConverterString.read(from: &buf), 
                 key: FfiConverterString.read(from: &buf), 
-                expiresAt: FfiConverterOptionInt64.read(from: &buf)
+                expiresAt: FfiConverterOptionInt64.read(from: &buf), 
+                isSecret: FfiConverterBool.read(from: &buf), 
+                updatedAt: FfiConverterInt64.read(from: &buf)
         )
     }
 
@@ -975,6 +1306,8 @@ public struct FfiConverterTypeFfiSecret: FfiConverterRustBuffer {
         FfiConverterString.write(value.envId, into: &buf)
         FfiConverterString.write(value.key, into: &buf)
         FfiConverterOptionInt64.write(value.expiresAt, into: &buf)
+        FfiConverterBool.write(value.isSecret, into: &buf)
+        FfiConverterInt64.write(value.updatedAt, into: &buf)
     }
 }
 
@@ -1123,6 +1456,30 @@ fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionBool: FfiConverterRustBuffer {
+    typealias SwiftType = Bool?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterBool.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterBool.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
@@ -1164,6 +1521,56 @@ fileprivate struct FfiConverterSequenceTypeFfiEnvironment: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiEnvironment.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiImportItem: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiImportItem]
+
+    public static func write(_ value: [FfiImportItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiImportItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiImportItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiImportItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiImportItem.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiImportRow: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiImportRow]
+
+    public static func write(_ value: [FfiImportRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiImportRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiImportRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiImportRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiImportRow.read(from: &buf))
         }
         return seq
     }
@@ -1224,6 +1631,20 @@ public func defaultDbPath() -> String {
     )
 })
 }
+public func isValidKey(key: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_is_valid_key(
+        FfiConverterString.lower(key),$0
+    )
+})
+}
+public func looksSecret(key: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_looks_secret(
+        FfiConverterString.lower(key),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -1243,13 +1664,25 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_func_default_db_path() != 45430) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_func_is_valid_key() != 14740) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_looks_secret() != 50216) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import() != 36276) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_clone_environment() != 3605) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_environment() != 62234) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_project() != 39110) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_secret() != 31291) {
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_secret() != 7546) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_delete_environment() != 33958) {
@@ -1259,6 +1692,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_delete_secret() != 29730) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_edit_secret() != 16272) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_export_env() != 38987) {
@@ -1283,6 +1719,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_mcp_session_count() != 20964) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_preview_import() != 8892) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_environment() != 57662) {

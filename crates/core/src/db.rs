@@ -146,6 +146,16 @@ impl Db {
             CREATE UNIQUE INDEX IF NOT EXISTS idx_secret_env_key
                 ON secret(env_id, key);
         ")?;
+        let has_is_secret: bool = self.conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('secret') WHERE name = 'is_secret'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? > 0;
+        if !has_is_secret {
+            self.conn.execute_batch(
+                "ALTER TABLE secret ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 1;",
+            )?;
+        }
         Ok(())
     }
 }

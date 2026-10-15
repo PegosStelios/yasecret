@@ -266,6 +266,16 @@ void uniffi_yasecret_ffi_fn_free_yasecretsession(void*_Nonnull ptr, RustCallStat
 void*_Nonnull uniffi_yasecret_ffi_fn_constructor_yasecretsession_new(RustBuffer db_path, RustBuffer password, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_APPLY_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_APPLY_IMPORT
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_apply_import(void*_Nonnull ptr, RustBuffer project_id, RustBuffer env_id, RustBuffer items, int8_t overwrite, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_clone_environment(void*_Nonnull ptr, RustBuffer env_id, RustBuffer new_name, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_ENVIRONMENT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_ENVIRONMENT
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_environment(void*_Nonnull ptr, RustBuffer project_id, RustBuffer name, RustCallStatus *_Nonnull out_status
@@ -278,7 +288,7 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_project(void*_No
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_SECRET
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_SECRET
-RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_secret(void*_Nonnull ptr, RustBuffer project_id, RustBuffer env_id, RustBuffer key, RustBuffer value, RustBuffer expires_at, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_secret(void*_Nonnull ptr, RustBuffer project_id, RustBuffer env_id, RustBuffer key, RustBuffer value, RustBuffer expires_at, int8_t is_secret, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_DELETE_ENVIRONMENT
@@ -294,6 +304,11 @@ void uniffi_yasecret_ffi_fn_method_yasecretsession_delete_project(void*_Nonnull 
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_DELETE_SECRET
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_DELETE_SECRET
 void uniffi_yasecret_ffi_fn_method_yasecretsession_delete_secret(void*_Nonnull ptr, RustBuffer secret_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_EDIT_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_EDIT_SECRET
+void uniffi_yasecret_ffi_fn_method_yasecretsession_edit_secret(void*_Nonnull ptr, RustBuffer project_id, RustBuffer secret_id, RustBuffer new_key, RustBuffer new_value, RustBuffer is_secret, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_EXPORT_ENV
@@ -336,6 +351,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_list_secrets(void*_Nonn
 uint32_t uniffi_yasecret_ffi_fn_method_yasecretsession_mcp_session_count(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_PREVIEW_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_PREVIEW_IMPORT
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_preview_import(void*_Nonnull ptr, RustBuffer env_id, RustBuffer content, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_RENAME_ENVIRONMENT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_RENAME_ENVIRONMENT
 void uniffi_yasecret_ffi_fn_method_yasecretsession_rename_environment(void*_Nonnull ptr, RustBuffer env_id, RustBuffer new_name, RustCallStatus *_Nonnull out_status
@@ -355,6 +375,16 @@ void uniffi_yasecret_ffi_fn_method_yasecretsession_update_secret(void*_Nonnull p
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_DEFAULT_DB_PATH
 RustBuffer uniffi_yasecret_ffi_fn_func_default_db_path(RustCallStatus *_Nonnull out_status
     
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_IS_VALID_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_IS_VALID_KEY
+int8_t uniffi_yasecret_ffi_fn_func_is_valid_key(RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_LOOKS_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_LOOKS_SECRET
+int8_t uniffi_yasecret_ffi_fn_func_looks_secret(RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_YASECRET_FFI_RUSTBUFFER_ALLOC
@@ -643,6 +673,30 @@ uint16_t uniffi_yasecret_ffi_checksum_func_default_db_path(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_IS_VALID_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_IS_VALID_KEY
+uint16_t uniffi_yasecret_ffi_checksum_func_is_valid_key(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_LOOKS_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_LOOKS_SECRET
+uint16_t uniffi_yasecret_ffi_checksum_func_looks_secret(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_clone_environment(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_ENVIRONMENT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_ENVIRONMENT
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_create_environment(void
@@ -676,6 +730,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_delete_project(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_DELETE_SECRET
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_DELETE_SECRET
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_delete_secret(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_EDIT_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_EDIT_SECRET
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_edit_secret(void
     
 );
 #endif
@@ -724,6 +784,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_list_secrets(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_MCP_SESSION_COUNT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_MCP_SESSION_COUNT
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_mcp_session_count(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_PREVIEW_IMPORT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_PREVIEW_IMPORT
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_preview_import(void
     
 );
 #endif

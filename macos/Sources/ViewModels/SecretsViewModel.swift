@@ -4,24 +4,55 @@ import Foundation
 final class SecretsViewModel {
     var secrets: [FfiSecret] = []
     var errorMessage: String?
+    var searchText = ""
+
+    var filtered: [FfiSecret] {
+        let q = searchText.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return secrets }
+        return secrets.filter { $0.key.localizedCaseInsensitiveContains(q) }
+    }
 
     func load(envId: String, session: YasecretSession) {
         do {
             secrets = try session.listSecrets(envId: envId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
+    @discardableResult
     func createSecret(projectId: String, envId: String, key: String, value: String,
-                      expiresAt: Int64?, session: YasecretSession) {
+                      isSecret: Bool = true, expiresAt: Int64? = nil,
+                      session: YasecretSession) -> Bool {
         errorMessage = nil
         do {
-            let s = try session.createSecret(
-                projectId: projectId, envId: envId, key: key, value: value, expiresAt: expiresAt)
-            secrets.append(s)
+            _ = try session.createSecret(
+                projectId: projectId, envId: envId, key: key, value: value,
+                expiresAt: expiresAt, isSecret: isSecret)
+            secrets = try session.listSecrets(envId: envId)
+            return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
+            return false
+        }
+    }
+
+    /// Pass nil for anything that should stay unchanged.
+    @discardableResult
+    func editSecret(projectId: String, secret: FfiSecret, newKey: String?, newValue: String?,
+                    isSecret: Bool?, session: YasecretSession) -> Bool {
+        errorMessage = nil
+        do {
+            try session.editSecret(
+                projectId: projectId, secretId: secret.id,
+                newKey: newKey == secret.key ? nil : newKey,
+                newValue: newValue,
+                isSecret: isSecret == secret.isSecret ? nil : isSecret)
+            secrets = try session.listSecrets(envId: secret.envId)
+            return true
+        } catch {
+            errorMessage = userMessage(error)
+            return false
         }
     }
 
@@ -32,7 +63,7 @@ final class SecretsViewModel {
                 secrets = try session.listSecrets(envId: envId)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
@@ -41,7 +72,7 @@ final class SecretsViewModel {
             try session.deleteSecret(secretId: id)
             secrets.removeAll { $0.id == id }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 }

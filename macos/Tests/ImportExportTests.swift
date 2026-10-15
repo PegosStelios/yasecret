@@ -29,7 +29,7 @@ final class ImportExportTests: XCTestCase {
     func testExportEnvContainsPlaintext() throws {
         let (session, projId, envId) = try makeSession()
         let _ = try session.createSecret(
-            projectId: projId, envId: envId, key: "KEY1", value: "val1", expiresAt: nil)
+            projectId: projId, envId: envId, key: "KEY1", value: "val1", expiresAt: nil, isSecret: true)
         let exported = try session.exportEnv(projectId: projId, envId: envId)
         XCTAssertTrue(exported.contains("KEY1=val1"),
             "exported .env must contain plaintext: \(exported)")

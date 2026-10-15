@@ -2,6 +2,8 @@ import Foundation
 
 @Observable
 final class ProjectsViewModel {
+    static let defaultEnvironments = ["development", "staging", "production"]
+
     var projects: [FfiProject] = []
     var selectedProjectId: String?
     var errorMessage: String?
@@ -10,17 +12,22 @@ final class ProjectsViewModel {
         do {
             projects = try session.listProjects()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
-    func createProject(name: String, session: YasecretSession) {
+    func createProject(name: String, withDefaultEnvironments: Bool = false, session: YasecretSession) {
         do {
             let p = try session.createProject(name: name, description: nil)
+            if withDefaultEnvironments {
+                for env in Self.defaultEnvironments {
+                    _ = try session.createEnvironment(projectId: p.id, name: env)
+                }
+            }
             projects.append(p)
             selectedProjectId = p.id
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
@@ -28,10 +35,10 @@ final class ProjectsViewModel {
         do {
             try session.renameProject(projectId: id, newName: newName)
             if let idx = projects.firstIndex(where: { $0.id == id }) {
-                projects[idx] = FfiProject(id: projects[idx].id, name: newName, description: projects[idx].description)
+                projects[idx].name = newName
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 
@@ -41,7 +48,7 @@ final class ProjectsViewModel {
             projects.removeAll { $0.id == id }
             if selectedProjectId == id { selectedProjectId = nil }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = userMessage(error)
         }
     }
 }

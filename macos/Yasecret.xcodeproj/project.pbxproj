@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		0613EAD23785CAEEA9D97941 /* SecretRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F71689A6FA5A1CC84FBB2522 /* SecretRowView.swift */; };
 		091842D5658EBDC87F5E3F1C /* UnlockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAF40D749444730951A336E /* UnlockViewModelTests.swift */; };
 		0E0D3AB2098DB7705FA63F5D /* SecretsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */; };
 		18B6609216572487C36646C9 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E42014ECF5C8D0D8BC38F12A /* MainView.swift */; };
@@ -18,16 +17,17 @@
 		53999DE78666B183BB40D436 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CA24F70E7C7A39A1B1C993 /* AppState.swift */; };
 		5584F387497259E0C0FEE537 /* BiometricService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9793A6C5EA5C712EF40EA9FF /* BiometricService.swift */; };
 		5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98853CE4277C080D4AB59E3A /* ImportExportTests.swift */; };
+		6C772D0A11F77810279DA014 /* SecretEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBBEF6D6DCE51AEAFFC233A /* SecretEditorView.swift */; };
 		6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */; };
 		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
 		74349B909E2A016ED93C0E17 /* McpTofuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4C1301B50B4CB590C1A037 /* McpTofuTests.swift */; };
 		7B771A70FD1E0D4F68A2D891 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */; };
-		8BE739596B84AF0EAC8A9C93 /* NewSecretView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9B5BF880DEB3C21F29BAE6 /* NewSecretView.swift */; };
 		A1E0649A7BDB3878F817B6F7 /* EnvironmentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5312C507CE87A55E91465D /* EnvironmentListView.swift */; };
 		A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F812ACEDBE3856E75387F03 /* YasecretApp.swift */; };
 		B4A4640C6AF45ED85FC9824B /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062316329A998FB982ACA9CD /* NotificationService.swift */; };
 		BA2745190E7CFB897313C891 /* UnlockViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E9043E58BC3AA04986C0A83 /* UnlockViewModel.swift */; };
 		BE947BDC26162F352A3EBA5F /* yasecret_ffi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */; };
+		D3249A32BA897EC6C96638CA /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1B1ADCFE3AB9471F60F92F /* Support.swift */; };
 		DC78ABF0CD1D3854C10E6737 /* SecretListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45960E3AAFF9407520DE2528 /* SecretListView.swift */; };
 		F2621DCBEADC9E7ED8880E7D /* ImportEnvView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53A3E4866555ECB2211D298 /* ImportEnvView.swift */; };
 		FD731D15CB72ECA2FF6E17C0 /* ProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */; };
@@ -47,6 +47,8 @@
 		062316329A998FB982ACA9CD /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
 		07CA37946B751825EC2A30A3 /* EnvironmentsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentsViewModel.swift; sourceTree = "<group>"; };
 		0F812ACEDBE3856E75387F03 /* YasecretApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YasecretApp.swift; sourceTree = "<group>"; };
+		1E1B1ADCFE3AB9471F60F92F /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
+		1FBBEF6D6DCE51AEAFFC233A /* SecretEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretEditorView.swift; sourceTree = "<group>"; };
 		309EFCDBF091ACC9147EE59B /* LoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingView.swift; sourceTree = "<group>"; };
 		3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsViewModel.swift; sourceTree = "<group>"; };
 		44C0E6DE7B76E820EB6DBFFF /* SecretsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsViewModel.swift; sourceTree = "<group>"; };
@@ -69,9 +71,7 @@
 		E42014ECF5C8D0D8BC38F12A /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		E53A3E4866555ECB2211D298 /* ImportEnvView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportEnvView.swift; sourceTree = "<group>"; };
 		EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
-		F71689A6FA5A1CC84FBB2522 /* SecretRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretRowView.swift; sourceTree = "<group>"; };
 		F7CA24F70E7C7A39A1B1C993 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
-		FE9B5BF880DEB3C21F29BAE6 /* NewSecretView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewSecretView.swift; sourceTree = "<group>"; };
 		FFAF40D749444730951A336E /* UnlockViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockViewModelTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -130,10 +130,19 @@
 				975739D0B039908603A08DAA /* BridgingHeader.h */,
 				C942096E84567BD006733F55 /* App */,
 				8560CA8BC1CD055BED41F4B5 /* Services */,
+				6BBEE228406B80346F578488 /* Support */,
 				46DDA2F6BCAC67C3F87E48AA /* ViewModels */,
 				C37160231E6BD4753B92E833 /* Views */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		6BBEE228406B80346F578488 /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				1E1B1ADCFE3AB9471F60F92F /* Support.swift */,
+			);
+			path = Support;
 			sourceTree = "<group>";
 		};
 		77B83C7034020DFC30B1E886 /* Generated */ = {
@@ -172,10 +181,9 @@
 				AB5312C507CE87A55E91465D /* EnvironmentListView.swift */,
 				E53A3E4866555ECB2211D298 /* ImportEnvView.swift */,
 				E42014ECF5C8D0D8BC38F12A /* MainView.swift */,
-				FE9B5BF880DEB3C21F29BAE6 /* NewSecretView.swift */,
 				EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */,
+				1FBBEF6D6DCE51AEAFFC233A /* SecretEditorView.swift */,
 				45960E3AAFF9407520DE2528 /* SecretListView.swift */,
-				F71689A6FA5A1CC84FBB2522 /* SecretRowView.swift */,
 			);
 			path = Main;
 			sourceTree = "<group>";
@@ -305,13 +313,13 @@
 				358220B6816E40A4870962F2 /* KeychainService.swift in Sources */,
 				6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */,
 				18B6609216572487C36646C9 /* MainView.swift in Sources */,
-				8BE739596B84AF0EAC8A9C93 /* NewSecretView.swift in Sources */,
 				B4A4640C6AF45ED85FC9824B /* NotificationService.swift in Sources */,
 				FD731D15CB72ECA2FF6E17C0 /* ProjectListView.swift in Sources */,
 				7B771A70FD1E0D4F68A2D891 /* ProjectsViewModel.swift in Sources */,
+				6C772D0A11F77810279DA014 /* SecretEditorView.swift in Sources */,
 				DC78ABF0CD1D3854C10E6737 /* SecretListView.swift in Sources */,
-				0613EAD23785CAEEA9D97941 /* SecretRowView.swift in Sources */,
 				484FF260107AFA869E8103C0 /* SecretsViewModel.swift in Sources */,
+				D3249A32BA897EC6C96638CA /* Support.swift in Sources */,
 				22FC8403E2BAE4CF011134B4 /* UnlockView.swift in Sources */,
 				BA2745190E7CFB897313C891 /* UnlockViewModel.swift in Sources */,
 				A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */,

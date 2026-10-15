@@ -45,7 +45,7 @@ final class FfiSmokeTests: XCTestCase {
         let proj = try session.createProject(name: "app", description: nil)
         let env = try session.createEnvironment(projectId: proj.id, name: "dev")
         let _ = try session.createSecret(projectId: proj.id, envId: env.id,
-                                         key: "TOKEN", value: "abc", expiresAt: nil)
+                                         key: "TOKEN", value: "abc", expiresAt: nil, isSecret: true)
 
         let secrets = try session.listSecrets(envId: env.id)
         XCTAssertEqual(secrets.count, 1)

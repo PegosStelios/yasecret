@@ -28,6 +28,7 @@ pub fn create(
         updated_at: now(),
         created_by: caller_id.to_string(),
         expires_at,
+        is_secret: true,
     };
     db.conn().execute(
         "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
@@ -69,7 +70,7 @@ pub fn get_plaintext(db: &Db, secret_id: &str, project_key: &[u8; 32]) -> Result
 
 pub fn list(db: &Db, env_id: &str) -> Result<Vec<Secret>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at FROM secret WHERE env_id=?1 ORDER BY key",
+        "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret FROM secret WHERE env_id=?1 ORDER BY key",
     )?;
     let rows = stmt.query_map([env_id], |r| {
         Ok(Secret {
@@ -82,6 +83,7 @@ pub fn list(db: &Db, env_id: &str) -> Result<Vec<Secret>> {
             updated_at: r.get(6)?,
             created_by: r.get(7)?,
             expires_at: r.get(8)?,
+            is_secret: r.get(9)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -110,6 +112,31 @@ pub fn update(
     get_raw(db, secret_id)
 }
 
+pub fn set_kind(db: &Db, secret_id: &str, is_secret: bool, caller_id: &str) -> Result<()> {
+    let n = db.conn().execute(
+        "UPDATE secret SET is_secret=?1, updated_at=?2 WHERE id=?3",
+        rusqlite::params![is_secret, now(), secret_id],
+    )?;
+    if n == 0 {
+        return Err(YasecretError::NotFound(format!("secret {secret_id}")));
+    }
+    let detail = if is_secret { "secret" } else { "plain" };
+    audit::append(db, caller_id, "changed_kind", "secret", secret_id, Some(detail))?;
+    Ok(())
+}
+
+pub fn rename_key(db: &Db, secret_id: &str, new_key: &str, caller_id: &str) -> Result<()> {
+    let n = db.conn().execute(
+        "UPDATE secret SET key=?1, updated_at=?2 WHERE id=?3",
+        rusqlite::params![new_key, now(), secret_id],
+    )?;
+    if n == 0 {
+        return Err(YasecretError::NotFound(format!("secret {secret_id}")));
+    }
+    audit::append(db, caller_id, "renamed_secret", "secret", secret_id, Some(new_key))?;
+    Ok(())
+}
+
 pub fn delete(db: &Db, secret_id: &str, caller_id: &str) -> Result<()> {
     db.conn()
         .execute("DELETE FROM secret WHERE id=?1", [secret_id])?;
@@ -120,7 +147,7 @@ pub fn delete(db: &Db, secret_id: &str, caller_id: &str) -> Result<()> {
 pub(crate) fn get_raw(db: &Db, id: &str) -> Result<Secret> {
     db.conn()
         .query_row(
-            "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at FROM secret WHERE id=?1",
+            "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret FROM secret WHERE id=?1",
             [id],
             |r| {
                 Ok(Secret {
@@ -133,6 +160,7 @@ pub(crate) fn get_raw(db: &Db, id: &str) -> Result<Secret> {
                     updated_at: r.get(6)?,
                     created_by: r.get(7)?,
                     expires_at: r.get(8)?,
+                    is_secret: r.get(9)?,
                 })
             },
         )

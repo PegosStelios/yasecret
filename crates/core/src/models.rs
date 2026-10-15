@@ -37,6 +37,7 @@ pub struct Secret {
     pub updated_at: i64,
     pub created_by: String,
     pub expires_at: Option<i64>,
+    pub is_secret: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -4,77 +4,124 @@ struct EnvironmentListView: View {
     @Environment(AppState.self) private var appState
     @Bindable var vm: EnvironmentsViewModel
     let projectId: String
+    let projectName: String
     @State private var showingNew = false
-    @State private var newName = ""
+    @State private var cloning: FfiEnvironment?
     @State private var renamingId: String?
     @State private var renameText = ""
+    @State private var pendingDelete: FfiEnvironment?
 
     var body: some View {
-        List(vm.environments, id: \.id, selection: Bindable(vm).selectedEnvId) { env in
-            if renamingId == env.id {
-                TextField("Environment name", text: $renameText, onCommit: commitRename)
-                    .textFieldStyle(.plain)
-                    .onExitCommand { renamingId = nil }
-            } else {
-                Text(env.name).tag(env.id)
-                    .contextMenu {
-                        Button("Rename…") {
-                            renamingId = env.id
-                            renameText = env.name
-                        }
-                        Divider()
-                        Button("Delete", role: .destructive) {
-                            guard let session = appState.session else { return }
-                            vm.deleteEnvironment(id: env.id, session: session)
-                        }
-                    }
+        List(selection: $vm.selectedEnvId) {
+            Section(projectName) {
+                ForEach(vm.environments) { env in
+                    row(env).tag(env.id)
+                }
+            }
+        }
+        .overlay {
+            if vm.environments.isEmpty {
+                ContentUnavailableView {
+                    Label("No environments", systemImage: "square.stack.3d.up")
+                } description: {
+                    Text("Environments keep separate values for development, staging and production.")
+                } actions: {
+                    Button("Add Defaults") { addDefaults() }
+                        .buttonStyle(.borderedProminent)
+                    Button("New Environment…") { showingNew = true }
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                Divider()
-                Button {
-                    showingNew = true
-                } label: {
+            ColumnFooter {
+                Button { showingNew = true } label: {
                     Label("New Environment", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .buttonStyle(.borderless)
+                Spacer()
             }
-            .background(.regularMaterial)
         }
         .sheet(isPresented: $showingNew) {
-            VStack(spacing: 16) {
-                Text("New Environment").font(.headline)
-                TextField("Environment name", text: $newName)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 220)
-                    .onSubmit { createEnvironment() }
-                HStack {
-                    Button("Cancel") { showingNew = false; newName = "" }
-                    Button("Create") { createEnvironment() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(newName.isEmpty)
-                }
+            NameSheet(title: "New Environment", placeholder: "e.g. qa, preview, feature-x",
+                      actionLabel: "Create", name: "") { name in
+                guard let session = appState.session else { return }
+                vm.createEnvironment(projectId: projectId, name: name, session: session)
             }
-            .padding(24)
+        }
+        .sheet(item: $cloning) { env in
+            NameSheet(title: "Clone “\(env.name)”", placeholder: "New environment name",
+                      actionLabel: "Clone", name: "\(env.name)-copy",
+                      footnote: "Copies all \(env.secretCount) variables, values included.") { name in
+                guard let session = appState.session else { return }
+                vm.cloneEnvironment(id: env.id, newName: name, session: session)
+            }
+        }
+        .confirmationDialog(
+            "Delete “\(pendingDelete?.name ?? "")”?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Environment", role: .destructive) {
+                if let e = pendingDelete, let session = appState.session {
+                    vm.deleteEnvironment(id: e.id, session: session)
+                }
+                pendingDelete = nil
+            }
+        } message: {
+            Text("Its \(pendingDelete?.secretCount ?? 0) variables are deleted too. This can't be undone.")
+        }
+        .errorAlert($vm.errorMessage)
+    }
+
+    @ViewBuilder
+    private func row(_ env: FfiEnvironment) -> some View {
+        if renamingId == env.id {
+            TextField("Environment name", text: $renameText)
+                .textFieldStyle(.plain)
+                .onSubmit(commitRename)
+                .onExitCommand { renamingId = nil }
+        } else {
+            HStack {
+                Label(env.name, systemImage: icon(for: env.name))
+                Spacer()
+                Text("\(env.secretCount)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .contextMenu {
+                Button("Rename…") {
+                    renamingId = env.id
+                    renameText = env.name
+                }
+                Button("Clone…") { cloning = env }
+                Divider()
+                Button("Delete…", role: .destructive) { pendingDelete = env }
+            }
         }
     }
 
-    private func createEnvironment() {
-        guard let session = appState.session, !newName.isEmpty else { return }
-        vm.createEnvironment(projectId: projectId, name: newName, session: session)
-        newName = ""; showingNew = false
+    private func icon(for name: String) -> String {
+        switch name.lowercased() {
+        case let n where n.hasPrefix("prod"): return "bolt.shield"
+        case let n where n.hasPrefix("stag"): return "testtube.2"
+        case let n where n.hasPrefix("dev") || n.hasPrefix("local"): return "hammer"
+        default: return "square.stack.3d.up"
+        }
+    }
+
+    private func addDefaults() {
+        guard let session = appState.session else { return }
+        for name in ProjectsViewModel.defaultEnvironments {
+            vm.createEnvironment(projectId: projectId, name: name, session: session)
+        }
+        vm.selectedEnvId = vm.environments.first?.id
     }
 
     private func commitRename() {
-        guard let id = renamingId, let session = appState.session,
-              !renameText.isEmpty, renameText != vm.environments.first(where: { $0.id == id })?.name
-        else { renamingId = nil; return }
-        vm.renameEnvironment(id: id, newName: renameText, session: session)
-        renamingId = nil
+        defer { renamingId = nil }
+        let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = renamingId, let session = appState.session, !name.isEmpty,
+              name != vm.environments.first(where: { $0.id == id })?.name else { return }
+        vm.renameEnvironment(id: id, newName: name, session: session)
     }
 }

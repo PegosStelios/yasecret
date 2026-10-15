@@ -10,7 +10,8 @@ pub fn parse(content: &str) -> Result<Vec<(String, String)>> {
         let eq_pos = trimmed.find('=').ok_or_else(|| {
             YasecretError::EnvParse(format!("line {}: missing '='", lineno + 1))
         })?;
-        let key = trimmed[..eq_pos].trim().to_string();
+        let key = trimmed[..eq_pos].trim();
+        let key = key.strip_prefix("export ").map(str::trim).unwrap_or(key).to_string();
         let raw_value = &trimmed[eq_pos + 1..];
         let value = unquote(raw_value);
         pairs.push((key, value));
@@ -45,4 +46,43 @@ pub fn serialize(pairs: &[(String, String)]) -> String {
 
 pub fn parse_example(content: &str) -> Result<Vec<String>> {
     Ok(parse(content)?.into_iter().map(|(k, _)| k).collect())
+}
+
+/// Parses either a dotenv file or a flat JSON object of scalars.
+pub fn parse_any(content: &str) -> Result<Vec<(String, String)>> {
+    if !content.trim_start().starts_with('{') {
+        return parse(content);
+    }
+    let value: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| YasecretError::EnvParse(format!("invalid JSON: {e}")))?;
+    let obj = value
+        .as_object()
+        .ok_or_else(|| YasecretError::EnvParse("JSON must be an object".into()))?;
+    obj.iter()
+        .map(|(k, v)| {
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Null => String::new(),
+                _ => return Err(YasecretError::EnvParse(format!("{k}: nested values are not supported"))),
+            };
+            Ok((k.clone(), s))
+        })
+        .collect()
+}
+
+const SECRET_HINTS: &[&str] = &[
+    "SECRET", "KEY", "TOKEN", "PASSWORD", "PASSWD", "PASS", "PRIVATE", "AUTH", "CREDENTIAL", "DATABASE_URL", "DSN",
+];
+
+pub fn looks_secret(key: &str) -> bool {
+    let upper = key.to_ascii_uppercase();
+    SECRET_HINTS.iter().any(|h| upper.contains(h))
+}
+
+pub fn valid_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
 }
