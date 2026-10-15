@@ -1,0 +1,15 @@
+[package]
+name    = "yasecret"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "yasecret"
+path = "src/main.rs"
+
+[dependencies]
+yasecret-core = { path = "../core" }
+clap          = { workspace = true }
+rpassword     = { workspace = true }
+dirs          = { workspace = true }
+zeroize       = { workspace = true }
