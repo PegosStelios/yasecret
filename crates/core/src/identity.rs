@@ -68,7 +68,14 @@ impl Identity {
     }
 
     pub fn signing_key(&self) -> SigningKey {
-        let bytes: [u8; 32] = self.secret_key[..32].try_into().expect("32 byte key");
-        SigningKey::from_bytes(&bytes)
+        use sha2::{Digest, Sha512};
+        let x25519_bytes: [u8; 32] = self.secret_key[..32].try_into().expect("32 byte key");
+        // Derive a separate Ed25519 key via SHA-512 to enforce key separation.
+        let mut h = Sha512::new();
+        h.update(b"yasecret-signing-key-v1");
+        h.update(x25519_bytes);
+        let hash = h.finalize();
+        let derived: [u8; 32] = hash[..32].try_into().expect("32 bytes");
+        SigningKey::from_bytes(&derived)
     }
 }

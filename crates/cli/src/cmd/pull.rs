@@ -53,7 +53,18 @@ pub fn run(args: PullArgs) -> yasecret_core::Result<()> {
     let output = env_file::serialize(&pairs);
 
     match args.output.as_deref() {
-        Some(path) => std::fs::write(path, &output)?,
+        Some(path) => {
+            std::fs::write(path, &output)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(meta) = std::fs::metadata(path) {
+                    let mut perms = meta.permissions();
+                    perms.set_mode(0o600);
+                    let _ = std::fs::set_permissions(path, perms);
+                }
+            }
+        }
         None => print!("{output}"),
     }
 

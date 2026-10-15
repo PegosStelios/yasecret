@@ -27,7 +27,12 @@ fn load_or_create_salt(db_path: &Path) -> Result<[u8; 16]> {
     let sp = salt_path(db_path);
     if sp.exists() {
         let bytes = std::fs::read(&sp)?;
-        Ok(bytes.try_into().unwrap_or_else(|_| crypto::generate_salt()))
+        bytes.try_into().map_err(|_| {
+            yasecret_core::YasecretError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("salt file corrupt (expected 16 bytes): {}", sp.display()),
+            ))
+        })
     } else {
         let s = crypto::generate_salt();
         std::fs::write(&sp, s)?;
