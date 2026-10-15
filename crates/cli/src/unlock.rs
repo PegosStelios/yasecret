@@ -6,6 +6,7 @@ pub struct Session {
     pub db: Db,
     pub db_key: Zeroizing<[u8; 32]>,
     pub identity: Identity,
+    pub password: String,
 }
 
 pub fn db_path(override_path: Option<&str>) -> PathBuf {
@@ -51,5 +52,5 @@ pub fn unlock(path: &Path, password_override: Option<&str>) -> Result<Session> {
     let db_key = crypto::derive_db_key(&password, &salt);
     let db = Db::open(path, &password)?;
     let id = identity::load_or_create(&db, "local")?;
-    Ok(Session { db, db_key, identity: id })
+    Ok(Session { db, db_key, identity: id, password })
 }

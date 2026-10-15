@@ -27,3 +27,5 @@ iroh-docs    = "0.101"
 iroh-blobs   = "0.103"
 iroh-gossip  = "0.101"
 futures-lite = "2"
+rmcp         = { version = "3.5.1", features = ["server", "macros", "transport-io", "schemars"] }
+schemars     = "1"

@@ -7,6 +7,10 @@ edition = "2021"
 name = "yasecret"
 path = "src/main.rs"
 
+[lib]
+name = "yasecret_cli"
+path = "src/lib.rs"
+
 [dev-dependencies]
 tempfile      = { workspace = true }
 yasecret-core = { path = "../core" }
@@ -21,4 +25,7 @@ zeroize       = { workspace = true }
 tokio         = { workspace = true }
 hex           = { workspace = true }
 sha2          = { workspace = true }
+rmcp          = { workspace = true }
+schemars      = { workspace = true }
+serde         = { workspace = true }
 rusqlite      = { workspace = true }

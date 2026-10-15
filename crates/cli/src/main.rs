@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 mod cmd;
+mod mcp_server;
 mod unlock;
 
 #[derive(Parser)]
@@ -17,6 +18,7 @@ enum Commands {
     Share(cmd::share::ShareArgs),
     Join(cmd::join::JoinArgs),
     Peers(cmd::peers::PeersArgs),
+    Mcp(cmd::mcp::McpArgs),
 }
 
 #[tokio::main]
@@ -28,6 +30,7 @@ async fn main() {
         Commands::Share(args) => cmd::share::run(args).await,
         Commands::Join(args) => cmd::join::run(args).await,
         Commands::Peers(args) => cmd::peers::run(args),
+        Commands::Mcp(args) => cmd::mcp::run(args).await,
     };
     if let Err(e) = result {
         eprintln!("error: {e}");
