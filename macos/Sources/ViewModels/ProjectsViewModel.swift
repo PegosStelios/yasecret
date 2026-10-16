@@ -5,12 +5,17 @@ final class ProjectsViewModel {
     static let defaultEnvironments = ["development", "staging", "production"]
 
     var projects: [FfiProject] = []
+    var sharedIds: Set<String> = []
     var selectedProjectId: String?
     var errorMessage: String?
 
     func load(session: YasecretSession) {
         do {
             projects = try session.listProjects()
+            sharedIds = Set(projects.filter { (try? session.syncStatus(projectId: $0.id))?.shared == true }.map(\.id))
+            if let sel = selectedProjectId, !projects.contains(where: { $0.id == sel }) {
+                selectedProjectId = projects.first?.id
+            }
         } catch {
             errorMessage = userMessage(error)
         }

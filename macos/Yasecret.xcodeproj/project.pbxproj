@@ -17,6 +17,7 @@
 		53999DE78666B183BB40D436 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7CA24F70E7C7A39A1B1C993 /* AppState.swift */; };
 		5584F387497259E0C0FEE537 /* BiometricService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9793A6C5EA5C712EF40EA9FF /* BiometricService.swift */; };
 		5BDE992BE0BDB6472D865D8C /* ImportExportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98853CE4277C080D4AB59E3A /* ImportExportTests.swift */; };
+		628C8FA77398A0158941D082 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89829258710233E0D15B5815 /* ShareSheet.swift */; };
 		6C772D0A11F77810279DA014 /* SecretEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBBEF6D6DCE51AEAFFC233A /* SecretEditorView.swift */; };
 		6DC33B97BAAD9A18F94FEE7B /* FfiSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */; };
 		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
@@ -27,8 +28,10 @@
 		B4A4640C6AF45ED85FC9824B /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062316329A998FB982ACA9CD /* NotificationService.swift */; };
 		BA2745190E7CFB897313C891 /* UnlockViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E9043E58BC3AA04986C0A83 /* UnlockViewModel.swift */; };
 		BE947BDC26162F352A3EBA5F /* yasecret_ffi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */; };
+		C80569D013CDB72CC1C8851D /* JoinSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11DAAD1F263A9438F8386D3 /* JoinSheet.swift */; };
 		D3249A32BA897EC6C96638CA /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E1B1ADCFE3AB9471F60F92F /* Support.swift */; };
 		DC78ABF0CD1D3854C10E6737 /* SecretListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45960E3AAFF9407520DE2528 /* SecretListView.swift */; };
+		EF34ECF9B483A0B60C62483F /* SharingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4454781EDAADA6FF1A2FAF6 /* SharingViewModel.swift */; };
 		F2621DCBEADC9E7ED8880E7D /* ImportEnvView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53A3E4866555ECB2211D298 /* ImportEnvView.swift */; };
 		FD731D15CB72ECA2FF6E17C0 /* ProjectListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */; };
 /* End PBXBuildFile section */
@@ -59,6 +62,7 @@
 		657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsViewModelTests.swift; sourceTree = "<group>"; };
 		736766C25F7D128CEC23697B /* yasecret_ffiFFI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = yasecret_ffiFFI.h; sourceTree = "<group>"; };
 		7B3131B97E7453E17DD6A888 /* yasecret_ffi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = yasecret_ffi.swift; sourceTree = "<group>"; };
+		89829258710233E0D15B5815 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		8BF07600118A89312F388E7F /* yasecret_ffiFFI.modulemap */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.module-map"; path = yasecret_ffiFFI.modulemap; sourceTree = "<group>"; };
 		9377BE94BB7B81F1E2A02A29 /* FfiSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FfiSmokeTests.swift; sourceTree = "<group>"; };
 		975739D0B039908603A08DAA /* BridgingHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
@@ -67,7 +71,9 @@
 		9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YasecretTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A87752CB6A8A7C7A4350AE88 /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		AB5312C507CE87A55E91465D /* EnvironmentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentListView.swift; sourceTree = "<group>"; };
+		C11DAAD1F263A9438F8386D3 /* JoinSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinSheet.swift; sourceTree = "<group>"; };
 		CC0474A09FF57C4E5635E230 /* Yasecret.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yasecret.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D4454781EDAADA6FF1A2FAF6 /* SharingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingViewModel.swift; sourceTree = "<group>"; };
 		E42014ECF5C8D0D8BC38F12A /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		E53A3E4866555ECB2211D298 /* ImportEnvView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportEnvView.swift; sourceTree = "<group>"; };
 		EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
@@ -111,6 +117,7 @@
 				07CA37946B751825EC2A30A3 /* EnvironmentsViewModel.swift */,
 				3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */,
 				44C0E6DE7B76E820EB6DBFFF /* SecretsViewModel.swift */,
+				D4454781EDAADA6FF1A2FAF6 /* SharingViewModel.swift */,
 				4E9043E58BC3AA04986C0A83 /* UnlockViewModel.swift */,
 			);
 			path = ViewModels;
@@ -135,6 +142,15 @@
 				C37160231E6BD4753B92E833 /* Views */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		6435C31673B731D18C53D7FE /* Sharing */ = {
+			isa = PBXGroup;
+			children = (
+				C11DAAD1F263A9438F8386D3 /* JoinSheet.swift */,
+				89829258710233E0D15B5815 /* ShareSheet.swift */,
+			);
+			path = Sharing;
 			sourceTree = "<group>";
 		};
 		6BBEE228406B80346F578488 /* Support */ = {
@@ -193,6 +209,7 @@
 			children = (
 				8B69188F1273E0751119D2FF /* Main */,
 				4979B63FEA26AE68347D3EB9 /* Placeholder */,
+				6435C31673B731D18C53D7FE /* Sharing */,
 				2E60247FCFF490E433092647 /* Unlock */,
 			);
 			path = Views;
@@ -310,6 +327,7 @@
 				A1E0649A7BDB3878F817B6F7 /* EnvironmentListView.swift in Sources */,
 				2A4D2B50E1BBE19ADB596B8B /* EnvironmentsViewModel.swift in Sources */,
 				F2621DCBEADC9E7ED8880E7D /* ImportEnvView.swift in Sources */,
+				C80569D013CDB72CC1C8851D /* JoinSheet.swift in Sources */,
 				358220B6816E40A4870962F2 /* KeychainService.swift in Sources */,
 				6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */,
 				18B6609216572487C36646C9 /* MainView.swift in Sources */,
@@ -319,6 +337,8 @@
 				6C772D0A11F77810279DA014 /* SecretEditorView.swift in Sources */,
 				DC78ABF0CD1D3854C10E6737 /* SecretListView.swift in Sources */,
 				484FF260107AFA869E8103C0 /* SecretsViewModel.swift in Sources */,
+				628C8FA77398A0158941D082 /* ShareSheet.swift in Sources */,
+				EF34ECF9B483A0B60C62483F /* SharingViewModel.swift in Sources */,
 				D3249A32BA897EC6C96638CA /* Support.swift in Sources */,
 				22FC8403E2BAE4CF011134B4 /* UnlockView.swift in Sources */,
 				BA2745190E7CFB897313C891 /* UnlockViewModel.swift in Sources */,

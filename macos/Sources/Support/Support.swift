@@ -15,6 +15,7 @@ func userMessage(_ error: Error) -> String {
     case .Io(let msg): return "File error: \(msg)"
     case .Db(let msg): return "Database error: \(msg)"
     case .Parse(let msg): return msg
+    case .Sync(let msg): return msg
     }
 }
 

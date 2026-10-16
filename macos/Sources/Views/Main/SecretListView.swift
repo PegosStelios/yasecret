@@ -7,6 +7,7 @@ struct SecretListView: View {
     let projectId: String
     let envId: String
     let envName: String
+    var readOnly = false
     var onChanged: () -> Void = {}
 
     @State private var selection = Set<String>()
@@ -74,20 +75,28 @@ struct SecretListView: View {
                     Text(countLabel).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { showingImport = true } label: {
-                    Label("Import", systemImage: "square.and.arrow.down")
+                if readOnly {
+                    Label("View only", systemImage: "eye")
+                        .foregroundStyle(.secondary)
+                        .help("The project owner gave you view access")
+                } else {
+                    Button { showingImport = true } label: {
+                        Label("Import", systemImage: "square.and.arrow.down")
+                    }
+                    .help("Import a .env or JSON file")
                 }
-                .help("Import a .env or JSON file")
                 Button(action: export) {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .disabled(vm.secrets.isEmpty)
                 .help("Save this environment as a .env file")
-                Button { editor = EditorRequest(secret: nil) } label: {
-                    Label("Add Variable", systemImage: "plus")
+                if !readOnly {
+                    Button { editor = EditorRequest(secret: nil) } label: {
+                        Label("Add Variable", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut("n", modifiers: [.command])
                 }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut("n", modifiers: [.command])
             }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -125,9 +134,11 @@ struct SecretListView: View {
             } description: {
                 Text("Add variables one by one, or import an existing .env or JSON file.")
             } actions: {
-                Button("Add Variable") { editor = EditorRequest(secret: nil) }
-                    .buttonStyle(.borderedProminent)
-                Button("Import…") { showingImport = true }
+                if !readOnly {
+                    Button("Add Variable") { editor = EditorRequest(secret: nil) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Import…") { showingImport = true }
+                }
             }
         } else if vm.filtered.isEmpty {
             ContentUnavailableView.search(text: vm.searchText)
@@ -164,10 +175,10 @@ struct SecretListView: View {
         .contextMenu(forSelectionType: String.self) { ids in
             menu(for: ids)
         } primaryAction: { ids in
-            if let id = ids.first, let s = secret(id) { editor = EditorRequest(secret: s) }
+            if !readOnly, let id = ids.first, let s = secret(id) { editor = EditorRequest(secret: s) }
         }
         .onDeleteCommand {
-            pendingDelete = vm.secrets.filter { selection.contains($0.id) }
+            if !readOnly { pendingDelete = vm.secrets.filter { selection.contains($0.id) } }
         }
     }
 
@@ -208,16 +219,18 @@ struct SecretListView: View {
     @ViewBuilder
     private func menu(for ids: Set<String>) -> some View {
         if ids.count == 1, let id = ids.first, let s = secret(id) {
-            Button("Edit…") { editor = EditorRequest(secret: s) }
+            if !readOnly { Button("Edit…") { editor = EditorRequest(secret: s) } }
             Button("Copy Value") { copyValue(s) }
             Button("Copy Key") { Clipboard.copy(s.key, sensitive: false) }
             if s.isSecret {
                 Button(revealed[s.id] == nil ? "Reveal Value" : "Hide Value") { toggleReveal(s) }
             }
-            Button(s.isSecret ? "Mark as Plain" : "Mark as Secret") { toggleKind(s) }
-            Divider()
+            if !readOnly {
+                Button(s.isSecret ? "Mark as Plain" : "Mark as Secret") { toggleKind(s) }
+                Divider()
+            }
         }
-        if !ids.isEmpty {
+        if !ids.isEmpty && !readOnly {
             Button(ids.count > 1 ? "Delete \(ids.count) Variables…" : "Delete…", role: .destructive) {
                 pendingDelete = vm.secrets.filter { ids.contains($0.id) }
             }

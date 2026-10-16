@@ -19,6 +19,9 @@ targets:
         CFBundleDisplayName: Yasecret
         NSHumanReadableDescription: "Local-first secrets manager"
         NSFaceIDUsageDescription: "Used to unlock your secret vault"
+        CFBundleURLTypes:
+          - CFBundleURLName: com.yasecret.join
+            CFBundleURLSchemes: [yasecret]
     settings:
       base:
         SWIFT_VERSION: "5.9"

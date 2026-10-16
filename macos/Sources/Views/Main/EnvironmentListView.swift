@@ -5,6 +5,10 @@ struct EnvironmentListView: View {
     @Bindable var vm: EnvironmentsViewModel
     let projectId: String
     let projectName: String
+    let sharing: SharingViewModel
+    var onShare: () -> Void = {}
+
+    private var readOnly: Bool { sharing.isReadOnly }
     @State private var showingNew = false
     @State private var cloning: FfiEnvironment?
     @State private var renamingId: String?
@@ -26,19 +30,43 @@ struct EnvironmentListView: View {
                 } description: {
                     Text("Environments keep separate values for development, staging and production.")
                 } actions: {
-                    Button("Add Defaults") { addDefaults() }
-                        .buttonStyle(.borderedProminent)
-                    Button("New Environment…") { showingNew = true }
+                    if !readOnly {
+                        Button("Add Defaults") { addDefaults() }
+                            .buttonStyle(.borderedProminent)
+                        Button("New Environment…") { showingNew = true }
+                    }
                 }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ColumnFooter {
-                Button { showingNew = true } label: {
-                    Label("New Environment", systemImage: "plus")
+            VStack(spacing: 0) {
+                if let summary = sharing.summary {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill((sharing.status?.peersOnline ?? 0) > 0 ? Color.green : Color.secondary)
+                            .frame(width: 7, height: 7)
+                        Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .help(sharing.status?.lastError ?? "Devices sync directly whenever both are open and unlocked")
                 }
-                .buttonStyle(.borderless)
-                Spacer()
+                ColumnFooter {
+                    if !readOnly {
+                        Button { showingNew = true } label: {
+                            Label("New", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("New environment")
+                    }
+                    Spacer()
+                    Button(action: onShare) {
+                        Label(sharing.isShared ? "Sharing" : "Share", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Share this project with teammates")
+                }
             }
         }
         .sheet(isPresented: $showingNew) {
@@ -89,13 +117,15 @@ struct EnvironmentListView: View {
                     .foregroundStyle(.secondary)
             }
             .contextMenu {
-                Button("Rename…") {
-                    renamingId = env.id
-                    renameText = env.name
+                if !readOnly {
+                    Button("Rename…") {
+                        renamingId = env.id
+                        renameText = env.name
+                    }
+                    Button("Clone…") { cloning = env }
+                    Divider()
+                    Button("Delete…", role: .destructive) { pendingDelete = env }
                 }
-                Button("Clone…") { cloning = env }
-                Divider()
-                Button("Delete…", role: .destructive) { pendingDelete = env }
             }
         }
     }

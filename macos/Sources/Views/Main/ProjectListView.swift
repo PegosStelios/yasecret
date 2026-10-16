@@ -7,6 +7,12 @@ struct ProjectListView: View {
     @State private var renamingId: String?
     @State private var renameText = ""
     @State private var pendingDelete: FfiProject?
+    @State private var joinRequest: JoinRequest?
+
+    private struct JoinRequest: Identifiable {
+        let id = UUID()
+        let link: String
+    }
 
     var body: some View {
         List(selection: $vm.selectedProjectId) {
@@ -25,15 +31,22 @@ struct ProjectListView: View {
                 } actions: {
                     Button("New Project") { showingNew = true }
                         .buttonStyle(.borderedProminent)
+                    Button("Join Shared Project…") { joinRequest = JoinRequest(link: "") }
                 }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ColumnFooter {
                 Button { showingNew = true } label: {
-                    Label("New Project", systemImage: "plus")
+                    Label("New", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
+                .help("New project")
+                Button { joinRequest = JoinRequest(link: "") } label: {
+                    Label("Join", systemImage: "person.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .help("Join a project someone shared with you")
                 Spacer()
                 Button { appState.lock() } label: {
                     Image(systemName: "lock")
@@ -48,6 +61,16 @@ struct ProjectListView: View {
                 vm.createProject(name: name, withDefaultEnvironments: withDefaults, session: session)
             }
         }
+        .sheet(item: $joinRequest) { req in
+            if let session = appState.session {
+                JoinSheet(session: session, link: req.link) { projectId in
+                    vm.load(session: session)
+                    vm.selectedProjectId = projectId
+                }
+            }
+        }
+        .onAppear(perform: consumePendingLink)
+        .onChange(of: appState.pendingJoinLink) { _, _ in consumePendingLink() }
         .confirmationDialog(
             "Delete “\(pendingDelete?.name ?? "")”?",
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
@@ -60,7 +83,9 @@ struct ProjectListView: View {
                 pendingDelete = nil
             }
         } message: {
-            Text("All environments and variables in this project are deleted. This can't be undone.")
+            Text(vm.sharedIds.contains(pendingDelete?.id ?? "")
+                 ? "This project is shared. Deleting it here stops syncing it and removes it from this Mac. This can't be undone."
+                 : "All environments and variables in this project are deleted. This can't be undone.")
         }
         .errorAlert($vm.errorMessage)
     }
@@ -73,7 +98,7 @@ struct ProjectListView: View {
                 .onSubmit(commitRename)
                 .onExitCommand { renamingId = nil }
         } else {
-            Label(proj.name, systemImage: "folder")
+            Label(proj.name, systemImage: vm.sharedIds.contains(proj.id) ? "person.2.fill" : "folder")
                 .contextMenu {
                     Button("Rename…") {
                         renamingId = proj.id
@@ -83,6 +108,12 @@ struct ProjectListView: View {
                     Button("Delete…", role: .destructive) { pendingDelete = proj }
                 }
         }
+    }
+
+    private func consumePendingLink() {
+        guard let link = appState.pendingJoinLink else { return }
+        appState.pendingJoinLink = nil
+        joinRequest = JoinRequest(link: link)
     }
 
     private func commitRename() {

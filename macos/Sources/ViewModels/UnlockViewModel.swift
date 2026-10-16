@@ -46,7 +46,7 @@ final class UnlockViewModel {
             appState.session = session
             appState.isLocked = false
             isFirstRun = false
-            appState.startMcpPolling()
+            appState.didUnlock()
         } catch {
             errorMessage = "Wrong password — try again"
             appState.session = nil

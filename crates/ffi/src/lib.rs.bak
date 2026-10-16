@@ -1,5 +1,0 @@
-
-# Just grep what we know - the test creates projects in temp dirs
-# Let's check if the production DB has "My App" by using the session
-echo "Testing real DB with FFI..."
-cargo test -p yasecret-ffi check_real_db -- --nocapture --ignored 2>&1 | tail -5 || echo "No such test"

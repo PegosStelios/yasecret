@@ -7,6 +7,14 @@ final class AppState {
     var session: YasecretSession?
     var isLocked: Bool = true
     var mcpSessionCount: Int = 0
+    /// Bumped whenever another device's changes landed in the vault; views reload on change.
+    var dataRevision = 0
+    var syncRunning = false
+    var syncError: String?
+    /// A yasecret://join link opened from outside the app, waiting for the Join sheet.
+    var pendingJoinLink: String?
+    private var lastSyncRevision: UInt64 = 0
+    private var syncTimer: Timer?
     private var lastKnownMcpCount: Int = 0
     private var mcpPollTimer: Timer?
     private var lockObservers: [NSObjectProtocol] = []
@@ -15,10 +23,52 @@ final class AppState {
         installAutoLock()
     }
 
+    func didUnlock() {
+        startMcpPolling()
+        startSync()
+    }
+
     func lock() {
         stopMcpPolling()
+        syncTimer?.invalidate()
+        syncTimer = nil
+        // Synchronous so a quick re-unlock can reopen the sync stores.
+        session?.stopSync()
+        syncRunning = false
         session = nil
         isLocked = true
+    }
+
+    private func startSync() {
+        guard let session else { return }
+        let name = Host.current().localizedName ?? "Mac"
+        Task.detached {
+            do {
+                try session.startSync(deviceName: name)
+                await MainActor.run {
+                    self.syncRunning = true
+                    self.syncError = nil
+                    self.startRevisionPolling()
+                }
+            } catch {
+                let msg = userMessage(error)
+                await MainActor.run { self.syncError = msg }
+            }
+        }
+    }
+
+    private func startRevisionPolling() {
+        syncTimer?.invalidate()
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let session = self.session else { return }
+                let rev = session.syncRevision()
+                if rev != self.lastSyncRevision {
+                    self.lastSyncRevision = rev
+                    self.dataRevision += 1
+                }
+            }
+        }
     }
 
     /// Locks the vault when the Mac sleeps, the screen locks, or the user switches accounts.

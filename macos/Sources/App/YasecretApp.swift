@@ -6,15 +6,20 @@ struct YasecretApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if appState.isLocked {
-                UnlockView()
-                    .environment(appState)
-            } else {
-                MainView()
-                    .environment(appState)
+            Group {
+                if appState.isLocked {
+                    UnlockView()
+                } else {
+                    MainView()
+                }
+            }
+            .environment(appState)
+            .onOpenURL { url in
+                if url.scheme == "yasecret" { appState.pendingJoinLink = url.absoluteString }
             }
         }
         .windowStyle(.hiddenTitleBar)
+        .handlesExternalEvents(matching: ["join"])
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
