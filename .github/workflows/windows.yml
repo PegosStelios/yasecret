@@ -12,6 +12,9 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Git Bash's bundled Perl lacks modules OpenSSL's Configure needs; use Strawberry Perl.
+      OPENSSL_SRC_PERL: C:\Strawberry\perl\bin\perl.exe
     steps:
       - uses: actions/checkout@v4
 
