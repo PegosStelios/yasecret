@@ -1,0 +1,98 @@
+# Yasecret
+
+A local-first secrets manager for `.env` files. Your variables live in an encrypted vault on your own machine, sync directly between your team's devices without a server, and can be used by scripts and AI coding agents without being pasted anywhere.
+
+- **macOS app** (SwiftUI) and **Windows app** (Tauri), sharing one Rust core.
+- **CLI** for pulling `.env` files and running commands with secrets injected.
+- **MCP server** so Claude Code can use secrets without seeing their values.
+
+> Status: early (0.1). It works end to end and is covered by tests, but it has not had an external security review. Don't trust it with production credentials you can't rotate.
+
+## Features
+
+- **Projects, environments, variables.** Default development / staging / production environments, clone an environment, compare two side by side.
+- **Plain and secret variables.** Secrets stay masked until revealed; plain values are shown. Names like `*_KEY`, `*_TOKEN`, `*_SECRET`, `*PASSWORD*` are flagged as secrets automatically.
+- **Import** `.env` or JSON (paste, drop a file, or pick one) with a preview: new vs existing keys, skip or overwrite, per-row secret toggle.
+- **Export** as `.env`, JSON, Docker Compose, Kubernetes Secret / ConfigMap, or a keys-only `.env.example`.
+- **History** of every value with one-click restore, plus an **activity log** (adds, edits, deletes, reveals, synced changes).
+- **Expiry dates** on variables with reminders a week before.
+- **Sharing without a server.** Devices sync peer-to-peer; invite teammates with edit or view-only access.
+- **Locking.** Touch ID / Keychain on macOS, Windows Credential Manager on Windows; auto-lock on sleep or screen lock (macOS) or after 10 minutes idle (Windows). Copied secrets are cleared from the clipboard after 60 seconds.
+
+## Install
+
+**Windows.** Installers are built by GitHub Actions on every push to `main`: open the latest [Windows build](../../actions/workflows/windows.yml) run and download `yasecret-windows` under *Artifacts* (`*-setup.exe` for a per-user install, `.msi` for managed installs). The installer isn't code-signed yet, so Windows SmartScreen will warn; choose *More info → Run anyway*.
+
+**macOS.** Build from source (below). A signed download is not available yet.
+
+## How sharing works
+
+Each project you share becomes a replicated document synced over [iroh](https://iroh.computer) (QUIC with NAT traversal and public relays). There is no Yasecret server; devices talk directly whenever both are open and unlocked.
+
+- Values are encrypted with a per-project AES-256-GCM key before they leave your machine. The vault file is encrypted with SQLCipher, and each project key is wrapped with a key derived from your master password using Argon2id.
+- **Invite link:** single use, expires after 24 hours. It carries a one-time key that unwraps the project key, so send it over a private channel.
+- **Device-bound invite:** your teammate sends you their device code (an X25519 public key); the project key is encrypted to that device only, so the link is safe to send anywhere.
+- Every change is accepted only if its author holds an access grant signed by the project owner (Ed25519), and joiners must prove they hold the project key before they're admitted. Holding the doc ticket alone gets you nothing.
+- **Removing someone** rotates the project key and re-encrypts every value, so they can't read anything written afterwards. **Stop sharing** does the same for everyone.
+- Conflicts resolve last-write-wins per variable; deletions sync as tombstones; every overwritten value stays in history.
+
+Limitations: the owner's device must be online for someone to join, and only the owner can invite or change access. Activity logs are kept per device.
+
+## CLI
+
+```bash
+cargo install --path crates/cli        # installs `yasecret`
+
+yasecret pull --project my-app --env development -o .env
+yasecret run  --project my-app --env development --only DATABASE_URL -- npm run migrate
+yasecret peers self                    # this device's code, for device-bound invites
+yasecret share --project my-app        # prints an invite link and stays online until you stop it
+yasecret join 'yasecret://join?...'
+```
+
+`run` injects only the variables you name with `--only`, and masks their values in the command's output. The CLI prompts for your master password. While the desktop app is running it owns the sync node, so share and join from the app instead.
+
+## Claude Code (MCP)
+
+```json
+{
+  "mcpServers": {
+    "yasecret": { "command": "yasecret", "args": ["mcp"] }
+  }
+}
+```
+
+Tools: `list_projects`, `list_secret_keys` (names only), `run_with_secrets` (injects values and masks them in the output returned to Claude), `import_env`, and `get_secret`, which returns a plaintext value only when `YASECRET_MCP_ALLOW_PLAINTEXT=1` is set. The macOS app notifies you when an MCP client gets access.
+
+Known limitation: `yasecret mcp` currently prompts for the master password on a terminal, so it can't unlock when an MCP client launches it in the background. Unattended unlock is on the roadmap.
+
+## Build from source
+
+Requirements: Rust (stable), and for the apps either Xcode 15+ with [XcodeGen](https://github.com/yonaskolb/XcodeGen) (macOS) or Node 22 + pnpm (Windows/Linux desktop).
+
+```bash
+cargo test --workspace --exclude yasecret-desktop     # core, sync, CLI, FFI
+
+# macOS app
+cd macos && xcodegen generate && cd ..
+xcodebuild -project macos/Yasecret.xcodeproj -scheme Yasecret build
+
+# Desktop app (Tauri)
+cd desktop && pnpm install
+pnpm tauri dev                         # run locally
+pnpm tauri build                       # installers for the current OS
+```
+
+The macOS build signs with an Apple Development identity (see `macos/project.yml`); change `DEVELOPMENT_TEAM` to your own team or set signing to automatic.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `crates/core` | Vault: SQLCipher storage, crypto, projects, environments, variables, history, audit log, `.env` parsing and export |
+| `crates/sync` | Peer-to-peer sync service on iroh: invites, grants, reconcile |
+| `crates/ffi` | `YasecretSession`, the API both apps use (UniFFI bindings for Swift, plain Rust for Tauri) |
+| `crates/cli` | `yasecret` CLI and MCP server |
+| `macos/` | SwiftUI app |
+| `desktop/` | Tauri v2 app (React + TypeScript + Tailwind) for Windows; Linux builds but is untested |
+| `docs/superpowers/` | Design spec and implementation plans |
