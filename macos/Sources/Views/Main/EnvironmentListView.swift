@@ -18,11 +18,45 @@ struct EnvironmentListView: View {
     @State private var showingActivity = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                ColumnHeader(title: projectName, subtitle: plural(vm.environments.count, "environment"))
+                statusRow
+                    .padding(.horizontal, Layout.gutter)
+            }
+            .padding(.bottom, 10)
+            Divider()
+            list
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(.container, edges: .top)
+    }
+
+    /// Same height as the variables search field, so both column headers end on one line.
+    private var statusRow: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(sharing.isShared ? ((sharing.status?.peersOnline ?? 0) > 0 ? Color.green : Color.orange) : Color.secondary.opacity(0.5))
+                .frame(width: 7, height: 7)
+            Text(sharing.summary ?? "Not shared")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .frame(height: 28)
+        .padding(.horizontal, 8)
+        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+        .help(sharing.status?.lastError ?? (sharing.isShared
+            ? "Devices sync directly whenever both are open and unlocked"
+            : "Use Share to sync this project with teammates"))
+    }
+
+    private var list: some View {
         List(selection: $vm.selectedEnvId) {
-            Section(projectName) {
-                ForEach(vm.environments) { env in
-                    row(env).tag(env.id)
-                }
+            ForEach(vm.environments) { env in
+                row(env).tag(env.id)
             }
         }
         .overlay {
@@ -41,23 +75,10 @@ struct EnvironmentListView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                if let summary = sharing.summary {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill((sharing.status?.peersOnline ?? 0) > 0 ? Color.green : Color.secondary)
-                            .frame(width: 7, height: 7)
-                        Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 5)
-                    .help(sharing.status?.lastError ?? "Devices sync directly whenever both are open and unlocked")
-                }
-                ColumnFooter {
+            ColumnFooter {
                     if !readOnly {
                         Button { showingNew = true } label: {
-                            Label("New", systemImage: "plus")
+                            Label("New", systemImage: "plus").fixedSize()
                         }
                         .buttonStyle(.borderless)
                         .help("New environment")
@@ -75,7 +96,6 @@ struct EnvironmentListView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Share this project with teammates")
-                }
             }
         }
         .sheet(isPresented: $showingNew) {

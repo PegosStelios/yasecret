@@ -45,9 +45,24 @@ struct UnlockView: View {
         }
         .frame(width: 360, height: 320)
         .task {
-            let dbPath = defaultDbPath()
-            let newVm = UnlockViewModel(appState: appState, dbPath: dbPath)
+            // Debug builds can open a throwaway vault (and Keychain slot) for UI testing.
+            #if DEBUG
+            let override = ProcessInfo.processInfo.environment["YASECRET_DB_PATH"]
+            #else
+            let override: String? = nil
+            #endif
+            let dbPath = override ?? defaultDbPath()
+            let newVm = UnlockViewModel(appState: appState, dbPath: dbPath,
+                                        keychainAccount: override.map { "dev-\($0)" } ?? "default")
             vm = newVm
+            #if DEBUG
+            if override != nil, let pw = ProcessInfo.processInfo.environment["YASECRET_DEV_PASSWORD"] {
+                newVm.password = pw
+                newVm.confirmPassword = pw
+                await newVm.unlock()
+                return
+            }
+            #endif
             await newVm.tryBiometricUnlock()
         }
     }

@@ -25,7 +25,7 @@ final class SharingViewModel {
         guard let s = status, s.shared else { return nil }
         var parts: [String] = []
         switch s.myLevel {
-        case "owner": parts.append("Shared by you")
+        case "owner": parts.append("Shared")
         case "viewer": parts.append("View only")
         case "pending": parts.append("Waiting for the owner")
         default: parts.append("Shared")

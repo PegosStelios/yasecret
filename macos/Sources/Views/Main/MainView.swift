@@ -22,7 +22,7 @@ struct MainView: View {
                                            description: Text("Pick a project on the left, or create one."))
                 }
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 280)
+            .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 320)
         } detail: {
             if let env = envsVM.selectedEnvironment, let proj = selectedProject {
                 SecretListView(vm: secretsVM, projectId: proj.id, envId: env.id, envName: env.name,

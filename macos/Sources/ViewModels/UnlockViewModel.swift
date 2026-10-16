@@ -23,7 +23,8 @@ final class UnlockViewModel {
 
     func tryBiometricUnlock() async {
         // The unit-test host is this app; it must never unlock the real vault.
-        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              ProcessInfo.processInfo.environment["YASECRET_DB_PATH"] == nil else { return }
         guard !isFirstRun, let stored = keychain.load() else { return }
         let ok = await biometrics.authenticate()
         guard ok else { return }

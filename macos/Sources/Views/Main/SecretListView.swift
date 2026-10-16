@@ -37,7 +37,25 @@ struct SecretListView: View {
             }
             Divider()
             content
+                .frame(maxHeight: .infinity)
+            ColumnFooter {
+                Text(footerLabel)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if !selection.isEmpty && !readOnly {
+                    Button(role: .destructive) {
+                        pendingDelete = vm.secrets.filter { selection.contains($0.id) }
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete the selected variables (⌫)")
+                }
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(.container, edges: .top)
         .sheet(item: $editor) { req in
             if let session = appState.session {
                 SecretEditorView(request: req, projectId: projectId, envId: envId,
@@ -89,36 +107,34 @@ struct SecretListView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(envName).font(.title2.weight(.semibold))
-                    Text(countLabel).font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if readOnly {
-                    Label("View only", systemImage: "eye")
-                        .foregroundStyle(.secondary)
-                        .help("The project owner gave you view access")
-                } else {
-                    Button { showingImport = true } label: {
-                        Label("Import", systemImage: "square.and.arrow.down")
+            ColumnHeader(title: envName, subtitle: countLabel) {
+                HStack(spacing: 8) {
+                    if readOnly {
+                        Label("View only", systemImage: "eye")
+                            .foregroundStyle(.secondary)
+                            .help("You have view access to this project")
+                    } else {
+                        Button { showingImport = true } label: {
+                            Label("Import", systemImage: "square.and.arrow.down")
+                        }
+                        .help("Import a .env or JSON file (⌘I)")
+                        .keyboardShortcut("i", modifiers: [.command])
                     }
-                    .help("Import a .env or JSON file (⌘I)")
-                    .keyboardShortcut("i", modifiers: [.command])
-                }
-                Button { showingExport = true } label: {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .disabled(vm.secrets.isEmpty)
-                .help("Export as .env, JSON, Docker Compose, Kubernetes or .env.example (⌘E)")
-                .keyboardShortcut("e", modifiers: [.command])
-                if !readOnly {
-                    Button { editor = EditorRequest(secret: nil) } label: {
-                        Label("Add Variable", systemImage: "plus")
+                    Button { showingExport = true } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut("n", modifiers: [.command])
+                    .disabled(vm.secrets.isEmpty)
+                    .help("Export as .env, JSON, Docker Compose, Kubernetes or .env.example (⌘E)")
+                    .keyboardShortcut("e", modifiers: [.command])
+                    if !readOnly {
+                        Button { editor = EditorRequest(secret: nil) } label: {
+                            Label("Add Variable", systemImage: "plus")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut("n", modifiers: [.command])
+                    }
                 }
+                .controlSize(.regular)
             }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -136,19 +152,25 @@ struct SecretListView: View {
                     .buttonStyle(.borderless)
                 }
             }
+            .frame(height: 28)
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
             .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
+            .padding(.horizontal, Layout.gutter)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
         .padding(.bottom, 10)
+    }
+
+    private var footerLabel: String {
+        if !selection.isEmpty { return "\(selection.count) selected" }
+        if !vm.searchText.isEmpty { return "\(vm.filtered.count) of \(plural(vm.secrets.count, "variable"))" }
+        return readOnly ? "View only" : "Double-click a row to edit · right-click for more"
     }
 
     private var countLabel: String {
         let secrets = vm.secrets.filter(\.isSecret).count
         let plain = vm.secrets.count - secrets
-        return "\(vm.secrets.count) variable\(vm.secrets.count == 1 ? "" : "s") · \(secrets) secret · \(plain) plain"
+        if vm.secrets.isEmpty { return "No variables yet" }
+        return "\(plural(vm.secrets.count, "variable")) · \(secrets) secret · \(plain) plain"
     }
 
     // MARK: Content
@@ -207,6 +229,7 @@ struct SecretListView: View {
             }
             .width(min: 90, ideal: 100, max: 130)
         }
+        .alternatingRowBackgrounds(.disabled)
         .contextMenu(forSelectionType: String.self) { ids in
             menu(for: ids)
         } primaryAction: { ids in

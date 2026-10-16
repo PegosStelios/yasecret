@@ -56,19 +56,58 @@ extension View {
     }
 }
 
-/// Footer bar pinned to the bottom of a sidebar column.
+enum Layout {
+    static let gutter: CGFloat = 16
+    /// Column headers sit in the window's top band, level with the traffic lights.
+    static let headerTop: CGFloat = 14
+    static let footerHeight: CGFloat = 36
+}
+
+/// Title block shared by the environment and variable columns so they line up.
+struct ColumnHeader<Trailing: View>: View {
+    let title: String
+    let subtitle: String
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.title2.weight(.semibold)).lineLimit(1)
+                Text(subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            trailing
+        }
+        .padding(.horizontal, Layout.gutter)
+        .padding(.top, Layout.headerTop)
+        .frame(minHeight: 44 + Layout.headerTop, alignment: .bottom)
+    }
+}
+
+extension ColumnHeader where Trailing == EmptyView {
+    init(title: String, subtitle: String) {
+        self.init(title: title, subtitle: subtitle) { EmptyView() }
+    }
+}
+
+/// Footer bar pinned to the bottom of a column; every column uses the same height.
 struct ColumnFooter<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 8) { content }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+            HStack(spacing: 12) { content }
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 12)
+                .frame(height: Layout.footerHeight)
         }
         .background(.regularMaterial)
     }
+}
+
+func plural(_ n: Int, _ word: String) -> String {
+    "\(n) \(word)\(n == 1 ? "" : "s")"
 }
 
 struct NameSheet: View {
