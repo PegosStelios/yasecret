@@ -108,3 +108,7 @@ The macOS build signs with an Apple Development identity (see `macos/project.yml
 | `macos/` | SwiftUI app |
 | `desktop/` | Tauri v2 app (React + TypeScript + Tailwind) for Windows; Linux builds but is untested |
 | `docs/superpowers/` | Design spec and implementation plans |
+
+## License
+
+Yasecret is free software under the [GNU Affero General Public License v3.0 or later](LICENSE). You can use, study, modify and share it; if you distribute it, or run a modified version as a network service, you must make your source code available under the same license.
