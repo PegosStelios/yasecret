@@ -299,6 +299,10 @@ struct LiveState {
     neighbors: HashSet<String>,
     last_synced_at: Option<i64>,
     last_error: Option<String>,
+    // Refreshed on every sync pass so status and member lists never block the UI.
+    is_owner: Option<bool>,
+    my_level: Option<String>,
+    members: Option<Vec<Member>>,
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -339,6 +343,11 @@ struct DocInfo {
     owner_sign_pub: [u8; 32],
 }
 
+struct RawDocInfo {
+    doc_id: String,
+    owner_sign_pub: Option<String>,
+}
+
 struct RawEntry {
     key: String,
     author: String,
@@ -356,7 +365,7 @@ impl SyncService {
         let db = Db::open(&cfg.db_path, &cfg.db_password)?;
         let identity = identity::load_or_create(&db, "local")?;
         let shared: Vec<String> = {
-            let mut stmt = db.conn().prepare("SELECT project_id FROM sync_doc")?;
+            let mut stmt = db.conn().prepare("SELECT project_id FROM sync_doc WHERE owner_sign_pub IS NOT NULL")?;
             let rows = stmt.query_map([], |r| r.get(0))?;
             rows.collect::<rusqlite::Result<_>>()?
         };
@@ -559,6 +568,18 @@ impl SyncService {
     }
 
     pub fn status(&self, project_id: &str) -> Result<SyncStatus> {
+        if let Some(st) = self.inner.live.lock().unwrap().get(project_id) {
+            if let (Some(is_owner), Some(level)) = (st.is_owner, &st.my_level) {
+                return Ok(SyncStatus {
+                    shared: true,
+                    is_owner,
+                    my_level: level.clone(),
+                    peers_online: st.neighbors.len() as u32,
+                    last_synced_at: st.last_synced_at,
+                    last_error: st.last_error.clone(),
+                });
+            }
+        }
         let info = self.inner.doc_info(project_id)?;
         let Some(info) = info else { return Ok(SyncStatus::default()) };
         let is_owner = info.owner_sign_pub == sign_pub(&self.inner.identity);
@@ -646,12 +667,15 @@ impl Inner {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .ok();
-        Ok(row.map(|(doc_id, owner)| DocInfo {
+        Ok(row.map(|(doc_id, owner)| RawDocInfo {
             doc_id,
-            owner_sign_pub: owner
-                .and_then(|h| hex::decode(h).ok())
-                .and_then(|b| b.try_into().ok())
-                .unwrap_or_else(|| sign_pub(&self.identity)),
+            owner_sign_pub: owner,
+        })
+        .and_then(|i| {
+            // Legacy rows without a pinned owner key can't be verified; treat them as unshared
+            // rather than guessing that this device is the owner.
+            let key = i.owner_sign_pub.as_deref().and_then(|h| hex::decode(h).ok()).and_then(|b| b.try_into().ok())?;
+            Some(DocInfo { doc_id: i.doc_id, owner_sign_pub: key })
         }))
     }
 
@@ -877,33 +901,30 @@ impl Inner {
     }
 
     async fn members(&self, project_id: &str) -> Result<Vec<Member>> {
+        if let Some(cached) = self.live.lock().unwrap().get(project_id).and_then(|s| s.members.clone()) {
+            return Ok(cached);
+        }
         let Some(info) = self.doc_info(project_id)? else { return Ok(vec![]) };
         let doc = self.open_doc(&info.doc_id).await?;
         let entries = self.read_entries(&doc).await?;
         let grants = valid_grants(project_id, &entries, &info.owner_sign_pub);
-        let mut out: Vec<Member> = Vec::new();
-        let mut seen = HashSet::new();
-        let mut member_entries: Vec<&RawEntry> = entries.iter().filter(|e| e.key.starts_with("v2/member/")).collect();
-        member_entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-        for e in member_entries {
-            let Ok(m) = serde_json::from_slice::<WMember>(&e.content) else { continue };
-            if e.key != keys::member(&m.peer_id) || !seen.insert(m.peer_id.clone()) {
-                continue;
-            }
-            let level = grants.get(&m.peer_id).map(|g| g.level.clone()).unwrap_or_else(|| "pending".into());
-            if level == LEVEL_REMOVED {
-                continue;
-            }
-            out.push(Member {
-                is_me: m.peer_id == self.my_peer,
-                peer_id: m.peer_id,
-                name: m.name,
-                level,
-                joined_at: m.joined_at,
-            });
-        }
-        out.sort_by(|a, b| (a.level != LEVEL_OWNER, a.joined_at).cmp(&(b.level != LEVEL_OWNER, b.joined_at)));
-        Ok(out)
+        Ok(members_from(&entries, &grants, &self.my_peer))
+    }
+
+    fn refresh_cache(&self, project_id: &str, info: &DocInfo, entries: &[RawEntry]) {
+        let grants = valid_grants(project_id, entries, &info.owner_sign_pub);
+        let is_owner = info.owner_sign_pub == sign_pub(&self.identity);
+        let level = if is_owner {
+            LEVEL_OWNER.to_string()
+        } else {
+            grants.get(&self.my_peer).map(|g| g.level.clone()).unwrap_or_else(|| "pending".into())
+        };
+        let members = members_from(entries, &grants, &self.my_peer);
+        let mut live = self.live.lock().unwrap();
+        let st = live.entry(project_id.to_string()).or_default();
+        st.is_owner = Some(is_owner);
+        st.my_level = Some(level);
+        st.members = Some(members);
     }
 
     /// One full sync pass: apply accepted remote changes, publish newer local ones,
@@ -913,6 +934,7 @@ impl Inner {
         let Some(info) = self.doc_info(project_id)? else { return Ok(()) };
         let doc = self.open_doc(&info.doc_id).await?;
         let entries = self.read_entries(&doc).await?;
+        self.refresh_cache(project_id, &info, &entries);
         let me = self.clone();
         let pid = project_id.to_string();
         let owner = info.owner_sign_pub;
@@ -923,14 +945,39 @@ impl Inner {
         })
         .await
         .map_err(|e| SyncError::Iroh(anyhow::anyhow!("{e}")))??;
+        let wrote = !plan.pushes.is_empty();
         for (key, value) in plan.pushes {
             self.write(&doc, &key, value).await?;
+        }
+        if wrote {
+            let entries = self.read_entries(&doc).await?;
+            self.refresh_cache(project_id, &info, &entries);
         }
         if plan.changed_local {
             self.revision.fetch_add(1, Ordering::SeqCst);
         }
         Ok(())
     }
+}
+
+fn members_from(entries: &[RawEntry], grants: &HashMap<String, WGrant>, my_peer: &str) -> Vec<Member> {
+    let mut out: Vec<Member> = Vec::new();
+    let mut seen = HashSet::new();
+    let mut member_entries: Vec<&RawEntry> = entries.iter().filter(|e| e.key.starts_with("v2/member/")).collect();
+    member_entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    for e in member_entries {
+        let Ok(m) = serde_json::from_slice::<WMember>(&e.content) else { continue };
+        if e.key != keys::member(&m.peer_id) || !seen.insert(m.peer_id.clone()) {
+            continue;
+        }
+        let level = grants.get(&m.peer_id).map(|g| g.level.clone()).unwrap_or_else(|| "pending".into());
+        if level == LEVEL_REMOVED {
+            continue;
+        }
+        out.push(Member { is_me: m.peer_id == my_peer, peer_id: m.peer_id, name: m.name, level, joined_at: m.joined_at });
+    }
+    out.sort_by(|a, b| (a.level != LEVEL_OWNER, a.joined_at).cmp(&(b.level != LEVEL_OWNER, b.joined_at)));
+    out
 }
 
 // ── Reconcile planning (pure DB + entries, no network) ────────────────────────
@@ -959,8 +1006,9 @@ fn valid_grants(project_id: &str, entries: &[RawEntry], owner: &[u8; 32]) -> Has
         if crypto::verify(msg.as_bytes(), &g.signature, owner).is_err() {
             continue;
         }
+        let rank = |l: &str| if l == LEVEL_REMOVED { 1 } else { 0 };
         match out.get(&g.peer_id) {
-            Some(prev) if prev.granted_at >= g.granted_at => {}
+            Some(prev) if (prev.granted_at, rank(&prev.level)) >= (g.granted_at, rank(&g.level)) => {}
             _ => {
                 out.insert(g.peer_id.clone(), g);
             }
@@ -1056,125 +1104,147 @@ fn plan_reconcile(
 
     // Environments first, so variables always have a parent row.
     let remote_envs: HashMap<String, WEnv> = latest_per_prefix(entries, "v2/env/", &writer_authors);
-    let local_envs: HashMap<String, yasecret_core::models::Environment> = yasecret_core::environment::list(db, project_id)?
+    let local_envs: HashMap<String, WEnv> = yasecret_core::environment::list(db, project_id)?
         .into_iter()
-        .map(|e| (e.id.clone(), e))
+        .map(|l| (l.id.clone(), WEnv { id: l.id, name: l.name, created_at: l.created_at, updated_at: l.updated_at, deleted: false }))
+        .chain(env_tombs.iter().map(|(id, at)| {
+            (id.clone(), WEnv { id: id.clone(), name: String::new(), created_at: 0, updated_at: *at, deleted: true })
+        }))
         .collect();
-    let env_ids: HashSet<&String> = remote_envs.keys().chain(local_envs.keys()).chain(env_tombs.keys()).collect();
+    let env_ids: HashSet<&String> = remote_envs.keys().chain(local_envs.keys()).collect();
     for id in env_ids {
-        let remote = remote_envs.get(id);
-        let local = local_envs.get(id);
-        let local_ts = local.map(|l| l.updated_at).or_else(|| env_tombs.get(id).copied());
-        match (local_ts, remote) {
-            (None, None) => {}
-            (None, Some(r)) => {
-                if !r.deleted {
-                    upsert_env(db, project_id, r)?;
-                    plan.changed_local = true;
-                }
-            }
-            (Some(lt), Some(r)) if r.updated_at > lt => {
-                if r.deleted {
-                    if local.is_some() {
-                        yasecret_core::environment::delete(db, id)?;
-                        plan.changed_local = true;
-                    }
+        match decide(local_envs.get(id), remote_envs.get(id)) {
+            Decision::Apply(r) => {
+                let applied = if r.deleted {
+                    yasecret_core::environment::delete(db, id).map(|_| true).map_err(SyncError::from)
                 } else {
-                    upsert_env(db, project_id, r)?;
-                    db.conn().execute("DELETE FROM tombstone WHERE id = ?1", [id])?;
+                    upsert_env(db, project_id, r)
+                };
+                if matches!(applied, Ok(true)) {
+                    db.conn().execute("DELETE FROM tombstone WHERE id = ?1 AND ?2 = 0", rusqlite::params![id, r.deleted])?;
                     plan.changed_local = true;
                 }
             }
-            (Some(lt), r) => {
-                let already_gone = local.is_none() && r.map(|r| r.deleted).unwrap_or(false);
-                if i_can_write && !already_gone && r.map(|r| lt > r.updated_at).unwrap_or(true) {
-                    let w = match local {
-                        Some(l) => WEnv { id: l.id.clone(), name: l.name.clone(), created_at: l.created_at, updated_at: l.updated_at, deleted: false },
-                        None => WEnv { id: id.clone(), name: String::new(), created_at: 0, updated_at: lt, deleted: true },
-                    };
-                    plan.pushes.push((keys::env(id), serde_json::to_vec(&w)?));
-                }
-            }
+            Decision::Push(l) if i_can_write => plan.pushes.push((keys::env(id), serde_json::to_vec(l)?)),
+            _ => {}
         }
     }
 
     // Variables
     let remote_secrets: HashMap<String, WSecret> = latest_per_prefix(entries, "v2/secret/", &writer_authors);
-    let mut local_secrets: HashMap<String, yasecret_core::models::Secret> = HashMap::new();
+    let mut local_secrets: HashMap<String, WSecret> = HashMap::new();
     for env in yasecret_core::environment::list(db, project_id)? {
-        for s in yasecret_core::secret::list(db, &env.id)? {
-            local_secrets.insert(s.id.clone(), s);
+        for l in yasecret_core::secret::list(db, &env.id)? {
+            local_secrets.insert(l.id.clone(), WSecret {
+                id: l.id,
+                env_id: l.env_id,
+                key: l.key,
+                enc: l.encrypted_value,
+                nonce: l.nonce,
+                is_secret: l.is_secret,
+                created_at: l.created_at,
+                updated_at: l.updated_at,
+                created_by: l.created_by,
+                expires_at: l.expires_at,
+                deleted: false,
+            });
         }
     }
-    let ids: HashSet<&String> = remote_secrets.keys().chain(local_secrets.keys()).chain(secret_tombs.keys()).collect();
+    for (id, at) in &secret_tombs {
+        local_secrets.entry(id.clone()).or_insert_with(|| WSecret {
+            id: id.clone(),
+            env_id: String::new(),
+            key: String::new(),
+            enc: vec![],
+            nonce: vec![],
+            is_secret: true,
+            created_at: 0,
+            updated_at: *at,
+            created_by: inner.my_peer.clone(),
+            expires_at: None,
+            deleted: true,
+        });
+    }
+    let ids: HashSet<&String> = remote_secrets.keys().chain(local_secrets.keys()).collect();
     for id in ids {
-        let remote = remote_secrets.get(id);
         let local = local_secrets.get(id);
-        let local_ts = local.map(|l| l.updated_at).or_else(|| secret_tombs.get(id).copied());
-        match (local_ts, remote) {
-            (None, None) => {}
-            (None, Some(r)) => {
-                if !r.deleted && apply_remote_secret(db, r, None)? {
-                    plan.changed_local = true;
-                }
-            }
-            (Some(lt), Some(r)) if r.updated_at > lt => {
-                if r.deleted {
-                    if local.is_some() {
-                        yasecret_core::secret::delete(db, id, &r.created_by)?;
-                        plan.changed_local = true;
+        match decide(local, remote_secrets.get(id)) {
+            Decision::Apply(r) => {
+                let local_live = local.filter(|l| !l.deleted);
+                let applied = if r.deleted {
+                    match local_live {
+                        Some(_) => yasecret_core::secret::delete(db, id, SYNC_ACTOR).map(|_| true).map_err(SyncError::from),
+                        None => Ok(false),
                     }
-                } else if apply_remote_secret(db, r, local)? {
-                    db.conn().execute("DELETE FROM tombstone WHERE id = ?1", [id])?;
+                } else {
+                    apply_remote_secret(db, project_id, r, local_live)
+                };
+                // One bad item must not stop the rest of the project from syncing.
+                if matches!(applied, Ok(true)) {
+                    if !r.deleted {
+                        db.conn().execute("DELETE FROM tombstone WHERE id = ?1", [id])?;
+                    }
                     plan.changed_local = true;
                 }
             }
-            (Some(lt), r) => {
-                let already_gone = local.is_none() && r.map(|r| r.deleted).unwrap_or(false);
-                if i_can_write && !already_gone && r.map(|r| lt > r.updated_at).unwrap_or(true) {
-                    let w = match local {
-                        Some(l) => WSecret {
-                            id: l.id.clone(),
-                            env_id: l.env_id.clone(),
-                            key: l.key.clone(),
-                            enc: l.encrypted_value.clone(),
-                            nonce: l.nonce.clone(),
-                            is_secret: l.is_secret,
-                            created_at: l.created_at,
-                            updated_at: l.updated_at,
-                            created_by: l.created_by.clone(),
-                            expires_at: l.expires_at,
-                            deleted: false,
-                        },
-                        None => WSecret {
-                            id: id.clone(),
-                            env_id: String::new(),
-                            key: String::new(),
-                            enc: vec![],
-                            nonce: vec![],
-                            is_secret: true,
-                            created_at: 0,
-                            updated_at: lt,
-                            created_by: inner.my_peer.clone(),
-                            expires_at: None,
-                            deleted: true,
-                        },
-                    };
-                    plan.pushes.push((keys::secret(id), serde_json::to_vec(&w)?));
-                }
-            }
+            Decision::Push(l) if i_can_write => plan.pushes.push((keys::secret(id), serde_json::to_vec(l)?)),
+            _ => {}
         }
     }
     Ok(plan)
 }
 
-fn upsert_env(db: &Db, project_id: &str, r: &WEnv) -> Result<()> {
-    db.conn().execute(
+enum Decision<'a, T> {
+    Apply(&'a T),
+    Push(&'a T),
+    Nothing,
+}
+
+/// Last-write-wins on `updated_at`; equal timestamps are settled by content hash so every
+/// device picks the same winner.
+fn decide<'a, T: Serialize + PartialEq + HasUpdatedAt>(local: Option<&'a T>, remote: Option<&'a T>) -> Decision<'a, T> {
+    match (local, remote) {
+        (None, None) => Decision::Nothing,
+        (None, Some(r)) if r.is_deleted() => Decision::Nothing,
+        (None, Some(r)) => Decision::Apply(r),
+        (Some(l), None) => Decision::Push(l),
+        (Some(l), Some(r)) if l == r => Decision::Nothing,
+        (Some(l), Some(r)) if l.is_deleted() && r.is_deleted() => Decision::Nothing,
+        (Some(l), Some(r)) => {
+            if order_key(r) > order_key(l) { Decision::Apply(r) } else { Decision::Push(l) }
+        }
+    }
+}
+
+trait HasUpdatedAt {
+    fn updated_at(&self) -> i64;
+    fn is_deleted(&self) -> bool;
+}
+
+impl HasUpdatedAt for WEnv {
+    fn updated_at(&self) -> i64 { self.updated_at }
+    fn is_deleted(&self) -> bool { self.deleted }
+}
+
+impl HasUpdatedAt for WSecret {
+    fn updated_at(&self) -> i64 { self.updated_at }
+    fn is_deleted(&self) -> bool { self.deleted }
+}
+
+fn order_key<T: Serialize + HasUpdatedAt>(x: &T) -> (i64, [u8; 32]) {
+    let bytes = serde_json::to_vec(x).unwrap_or_default();
+    (x.updated_at(), Sha256::digest(&bytes).into())
+}
+
+/// Returns false when the row belongs to another project and was left alone.
+fn upsert_env(db: &Db, project_id: &str, r: &WEnv) -> Result<bool> {
+    let n = db.conn().execute(
         "INSERT INTO environment (id, project_id, name, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at",
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, created_at = excluded.created_at, updated_at = excluded.updated_at
+         WHERE environment.project_id = excluded.project_id",
         rusqlite::params![&r.id, project_id, &r.name, r.created_at, r.updated_at],
     )?;
-    Ok(())
+    Ok(n > 0)
 }
 
 fn latest_per_prefix<T: for<'de> Deserialize<'de>>(
@@ -1199,33 +1269,23 @@ fn latest_per_prefix<T: for<'de> Deserialize<'de>>(
         .collect()
 }
 
-/// Writes a remote variable locally. Returns false if it had to be skipped (e.g. its
-/// environment hasn't arrived yet).
-fn apply_remote_secret(db: &Db, r: &WSecret, local: Option<&yasecret_core::models::Secret>) -> Result<bool> {
-    let env_exists: i64 = db.conn().query_row("SELECT count(*) FROM environment WHERE id = ?1", [&r.env_id], |x| x.get(0))?;
-    if env_exists == 0 {
+/// Writes a remote variable locally. Returns false if it was skipped: its environment
+/// hasn't arrived yet, or belongs to another project, or a newer local variable owns the name.
+fn apply_remote_secret(db: &Db, project_id: &str, r: &WSecret, local: Option<&WSecret>) -> Result<bool> {
+    let env_ok: i64 = db.conn().query_row(
+        "SELECT count(*) FROM environment WHERE id = ?1 AND project_id = ?2",
+        rusqlite::params![&r.env_id, project_id],
+        |x| x.get(0),
+    )?;
+    if env_ok == 0 {
         return Ok(false);
     }
-    if let Some(l) = local {
-        if l.encrypted_value != r.enc {
-            db.conn().execute(
-                "INSERT INTO secret_version (id,secret_id,encrypted_value,nonce,changed_by,changed_at,note) VALUES (?1,?2,?3,?4,?5,?6,'sync')",
-                rusqlite::params![new_id(), &l.id, &l.encrypted_value, &l.nonce, &r.created_by, l.updated_at],
-            )?;
-        }
-        db.conn().execute(
-            "UPDATE secret SET key=?1, encrypted_value=?2, nonce=?3, is_secret=?4, updated_at=?5, expires_at=?6 WHERE id=?7",
-            rusqlite::params![&r.key, &r.enc, &r.nonce, r.is_secret, r.updated_at, r.expires_at, &r.id],
-        )?;
-        yasecret_core::audit::append(db, SYNC_ACTOR, "synced_secret", "secret", &r.id, Some(&r.key))?;
-        return Ok(true);
-    }
-    // Two people created the same name independently: the newer one wins.
+    // Same name held by a different variable (created or renamed independently): newer wins.
     let clash: Option<(String, i64)> = db
         .conn()
         .query_row(
-            "SELECT id, updated_at FROM secret WHERE env_id = ?1 AND key = ?2",
-            rusqlite::params![&r.env_id, &r.key],
+            "SELECT id, updated_at FROM secret WHERE env_id = ?1 AND key = ?2 AND id != ?3",
+            rusqlite::params![&r.env_id, &r.key, &r.id],
             |x| Ok((x.get(0)?, x.get(1)?)),
         )
         .ok();
@@ -1233,12 +1293,30 @@ fn apply_remote_secret(db: &Db, r: &WSecret, local: Option<&yasecret_core::model
         if other_ts > r.updated_at {
             return Ok(false);
         }
-        yasecret_core::secret::delete(db, &other, "sync")?;
+        yasecret_core::secret::delete(db, &other, SYNC_ACTOR)?;
     }
-    db.conn().execute(
-        "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-        rusqlite::params![&r.id, &r.env_id, &r.key, &r.enc, &r.nonce, r.created_at, r.updated_at, &r.created_by, r.expires_at, r.is_secret],
-    )?;
+    if let Some(l) = local {
+        if l.enc != r.enc {
+            db.conn().execute(
+                "INSERT INTO secret_version (id,secret_id,encrypted_value,nonce,changed_by,changed_at,note) VALUES (?1,?2,?3,?4,?5,?6,'sync')",
+                rusqlite::params![new_id(), &l.id, &l.enc, &l.nonce, SYNC_ACTOR, l.updated_at],
+            )?;
+        }
+        db.conn().execute(
+            "UPDATE secret SET env_id=?1, key=?2, encrypted_value=?3, nonce=?4, is_secret=?5, created_at=?6, updated_at=?7,
+                               created_by=?8, expires_at=?9 WHERE id=?10",
+            rusqlite::params![&r.env_id, &r.key, &r.enc, &r.nonce, r.is_secret, r.created_at, r.updated_at, &r.created_by, r.expires_at, &r.id],
+        )?;
+    } else {
+        let inserted = db.conn().execute(
+            "INSERT OR IGNORE INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            rusqlite::params![&r.id, &r.env_id, &r.key, &r.enc, &r.nonce, r.created_at, r.updated_at, &r.created_by, r.expires_at, r.is_secret],
+        )?;
+        if inserted == 0 {
+            // The id already exists elsewhere (another project); never touch it from here.
+            return Ok(false);
+        }
+    }
     yasecret_core::audit::append(db, SYNC_ACTOR, "synced_secret", "secret", &r.id, Some(&r.key))?;
     Ok(true)
 }
@@ -1364,6 +1442,61 @@ mod tests {
         // A different peer can't reuse the redeemed invite.
         let other = member_entry("other", "other-author", Some("inv1"), join_proof(&key, &pid, "other", "other-author"));
         assert!(admit_members(&db, &pid, &[other], &HashMap::new(), &key, &me).unwrap().is_empty());
+    }
+
+    fn wsecret(id: &str, env: &str, key: &str, ts: i64, val: u8) -> WSecret {
+        WSecret {
+            id: id.into(), env_id: env.into(), key: key.into(), enc: vec![val], nonce: vec![0; 12],
+            is_secret: true, created_at: 1, updated_at: ts, created_by: "x".into(), expires_at: None, deleted: false,
+        }
+    }
+
+    #[test]
+    fn same_second_conflicts_resolve_identically_on_both_devices() {
+        let a = wsecret("s", "e", "K", 100, 1);
+        let b = wsecret("s", "e", "K", 100, 2);
+        let on_a = match decide(Some(&a), Some(&b)) { Decision::Apply(w) | Decision::Push(w) => w.enc.clone(), Decision::Nothing => vec![] };
+        let on_b = match decide(Some(&b), Some(&a)) { Decision::Apply(w) | Decision::Push(w) => w.enc.clone(), Decision::Nothing => vec![] };
+        assert_eq!(on_a, on_b, "both devices must converge on the same value");
+        assert!(matches!(decide(Some(&a), Some(&a)), Decision::Nothing));
+        let newer = wsecret("s", "e", "K", 101, 0);
+        assert!(matches!(decide(Some(&a), Some(&newer)), Decision::Apply(_)));
+        assert!(matches!(decide(Some(&newer), Some(&a)), Decision::Push(_)));
+    }
+
+    fn two_projects() -> (tempfile::TempDir, Db, String, String, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("t.sqlite"), "pw").unwrap();
+        let p1 = yasecret_core::project::create(&db, "p1", None, "o").unwrap();
+        let p2 = yasecret_core::project::create(&db, "p2", None, "o").unwrap();
+        let e1 = yasecret_core::environment::create(&db, &p1.id, "dev").unwrap();
+        let e2 = yasecret_core::environment::create(&db, &p2.id, "dev").unwrap();
+        (dir, db, p1.id, e1.id, e2.id)
+    }
+
+    #[test]
+    fn remote_data_cannot_reach_another_projects_environment() {
+        let (_d, db, p1, _e1, e2) = two_projects();
+        assert!(!apply_remote_secret(&db, &p1, &wsecret("s1", &e2, "INJECTED", 5, 1), None).unwrap());
+        assert!(yasecret_core::secret::list(&db, &e2).unwrap().is_empty());
+        let foreign_env = WEnv { id: e2.clone(), name: "pwned".into(), created_at: 0, updated_at: i64::MAX, deleted: false };
+        assert!(!upsert_env(&db, &p1, &foreign_env).unwrap());
+        assert_eq!(yasecret_core::environment::get(&db, &e2).unwrap().name, "dev");
+    }
+
+    #[test]
+    fn remote_rename_onto_an_existing_name_resolves_instead_of_failing() {
+        let (_d, db, p1, e1, _e2) = two_projects();
+        let k = [1u8; 32];
+        let older = yasecret_core::secret::create(&db, &e1, "TAKEN", b"old", &k, "o", None).unwrap();
+        let renamed = wsecret("other-id", &e1, "TAKEN", older.updated_at + 10, 3);
+        assert!(apply_remote_secret(&db, &p1, &renamed, None).unwrap());
+        let list = yasecret_core::secret::list(&db, &e1).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "other-id");
+
+        let stale = wsecret("stale-id", &e1, "TAKEN", 0, 4);
+        assert!(!apply_remote_secret(&db, &p1, &stale, None).unwrap(), "older remote loses, without an error");
     }
 
     #[test]

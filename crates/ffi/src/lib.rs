@@ -171,6 +171,8 @@ pub struct YasecretSession {
     db_key: Zeroizing<[u8; 32]>,
     sync: std::sync::Mutex<Option<Arc<yasecret_sync::live::SyncService>>>,
     sync_start: std::sync::Mutex<()>,
+    // One connection for the session: opening SQLCipher reruns its password KDF every time.
+    conn: std::sync::Mutex<Db>,
 }
 
 #[uniffi::export]
@@ -199,9 +201,9 @@ impl YasecretSession {
         let db_key = yasecret_core::crypto::derive_db_key(&password, &salt);
 
         // Verify password — Db::open returns WrongPassword on bad SQLCipher key
-        Db::open(path, &password).map_err(FfiError::from)?;
+        let conn = Db::open(path, &password).map_err(FfiError::from)?;
 
-        Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None), sync_start: std::sync::Mutex::new(()) }))
+        Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None), sync_start: std::sync::Mutex::new(()), conn: std::sync::Mutex::new(conn) }))
     }
 
     // ── Projects ──────────────────────────────────────────────────────────────
@@ -575,6 +577,10 @@ impl YasecretSession {
         for item in &items {
             check_key(&item.key)?;
         }
+        // A file that repeats a key: the last occurrence wins, like dotenv loaders.
+        let mut seen = std::collections::HashSet::new();
+        let mut items: Vec<FfiImportItem> = items.into_iter().rev().filter(|i| seen.insert(i.key.clone())).collect();
+        items.reverse();
         let db = self.open()?;
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
@@ -692,6 +698,8 @@ impl YasecretSession {
     }
 
     pub fn stop_sync(&self) {
+        // Wait for a start in progress, so it can't install a service after we stopped.
+        let _starting = self.sync_start.lock().unwrap();
         let svc = self.sync.lock().unwrap().take();
         if let Some(svc) = svc {
             svc.close();
@@ -732,7 +740,7 @@ impl YasecretSession {
     pub fn sync_status(&self, project_id: String) -> Result<FfiSyncStatus, FfiError> {
         let shared = {
             let db = self.open()?;
-            db.conn().query_row("SELECT count(*) FROM sync_doc WHERE project_id = ?1", [&project_id], |r| r.get::<_, i64>(0))
+            db.conn().query_row("SELECT count(*) FROM sync_doc WHERE project_id = ?1 AND owner_sign_pub IS NOT NULL", [&project_id], |r| r.get::<_, i64>(0))
                 .map_err(db_err)? > 0
         };
         let st = match (shared, self.sync_service()) {
@@ -748,6 +756,14 @@ impl YasecretSession {
             last_synced_at: st.last_synced_at,
             last_error: st.last_error,
         })
+    }
+
+    /// Ids of projects that are shared with other devices (one cheap query, no network).
+    pub fn shared_project_ids(&self) -> Result<Vec<String>, FfiError> {
+        let db = self.open()?;
+        let mut stmt = db.conn().prepare("SELECT project_id FROM sync_doc WHERE owner_sign_pub IS NOT NULL").map_err(db_err)?;
+        let rows = stmt.query_map([], |r| r.get(0)).map_err(db_err)?;
+        Ok(rows.collect::<rusqlite::Result<Vec<String>>>().map_err(db_err)?)
     }
 
     /// Changes whenever synced data from other devices landed in the vault.
@@ -860,8 +876,8 @@ fn env_record(db: &Db, e: yasecret_core::models::Environment) -> Result<FfiEnvir
 }
 
 impl YasecretSession {
-    fn open(&self) -> Result<Db, FfiError> {
-        Ok(Db::open(Path::new(&self.db_path), &self.password)?)
+    fn open(&self) -> Result<std::sync::MutexGuard<'_, Db>, FfiError> {
+        Ok(self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
     }
 
     fn sync_service(&self) -> Option<Arc<yasecret_sync::live::SyncService>> {
@@ -1127,6 +1143,21 @@ mod tests {
         let only = session.export_variables(p.clone(), e.clone(), "dotenv".into(), Some(vec!["API_KEY".into()]), true, "app".into()).unwrap();
         assert_eq!(only, "API_KEY=sk\n");
         assert!(session.export_variables(p, e, "yaml".into(), None, true, "app".into()).is_err());
+    }
+
+    #[test]
+    fn import_with_repeated_key_keeps_the_last_value() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        let items = vec![
+            FfiImportItem { key: "A".into(), value: "1".into(), is_secret: false },
+            FfiImportItem { key: "A".into(), value: "2".into(), is_secret: false },
+        ];
+        let sum = session.apply_import(p.clone(), e.clone(), items, false).unwrap();
+        assert_eq!(sum.added, 1);
+        let id = session.list_secrets(e).unwrap()[0].id.clone();
+        assert_eq!(session.get_secret_plaintext(p, id).unwrap(), "2");
     }
 
     #[test]

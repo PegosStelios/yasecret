@@ -105,7 +105,7 @@ pub fn update(
     )?;
     let (enc, nonce) = crypto::encrypt(new_plaintext, project_key)?;
     db.conn().execute(
-        "UPDATE secret SET encrypted_value=?1, nonce=?2, updated_at=?3 WHERE id=?4",
+        "UPDATE secret SET encrypted_value=?1, nonce=?2, updated_at=MAX(?3, updated_at + 1) WHERE id=?4",
         rusqlite::params![&enc, nonce.as_ref(), now(), secret_id],
     )?;
     audit::append(db, caller_id, "updated_secret", "secret", secret_id, None)?;
@@ -114,7 +114,7 @@ pub fn update(
 
 pub fn set_kind(db: &Db, secret_id: &str, is_secret: bool, caller_id: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE secret SET is_secret=?1, updated_at=?2 WHERE id=?3",
+        "UPDATE secret SET is_secret=?1, updated_at=MAX(?2, updated_at + 1) WHERE id=?3",
         rusqlite::params![is_secret, now(), secret_id],
     )?;
     if n == 0 {
@@ -127,7 +127,7 @@ pub fn set_kind(db: &Db, secret_id: &str, is_secret: bool, caller_id: &str) -> R
 
 pub fn set_expiry(db: &Db, secret_id: &str, expires_at: Option<i64>, caller_id: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE secret SET expires_at=?1, updated_at=?2 WHERE id=?3",
+        "UPDATE secret SET expires_at=?1, updated_at=MAX(?2, updated_at + 1) WHERE id=?3",
         rusqlite::params![expires_at, now(), secret_id],
     )?;
     if n == 0 {
@@ -139,7 +139,7 @@ pub fn set_expiry(db: &Db, secret_id: &str, expires_at: Option<i64>, caller_id: 
 
 pub fn rename_key(db: &Db, secret_id: &str, new_key: &str, caller_id: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE secret SET key=?1, updated_at=?2 WHERE id=?3",
+        "UPDATE secret SET key=?1, updated_at=MAX(?2, updated_at + 1) WHERE id=?3",
         rusqlite::params![new_key, now(), secret_id],
     )?;
     if n == 0 {

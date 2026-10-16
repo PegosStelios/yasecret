@@ -12,7 +12,7 @@ final class ProjectsViewModel {
     func load(session: YasecretSession) {
         do {
             projects = try session.listProjects()
-            sharedIds = Set(projects.filter { (try? session.syncStatus(projectId: $0.id))?.shared == true }.map(\.id))
+            sharedIds = Set((try? session.sharedProjectIds()) ?? [])
             if let sel = selectedProjectId, !projects.contains(where: { $0.id == sel }) {
                 selectedProjectId = projects.first?.id
             }

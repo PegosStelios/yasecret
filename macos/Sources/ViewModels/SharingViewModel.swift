@@ -8,7 +8,8 @@ final class SharingViewModel {
 
     var isShared: Bool { status?.shared == true }
     var isOwner: Bool { !isShared || status?.isOwner == true }
-    var isReadOnly: Bool { isShared && status?.myLevel == "viewer" }
+    /// Anyone who isn't an owner or editor can't change shared data: their edits would never sync.
+    var isReadOnly: Bool { isShared && !["owner", "editor"].contains(status?.myLevel ?? "") }
 
     func refresh(projectId: String, session: YasecretSession) {
         status = try? session.syncStatus(projectId: projectId)

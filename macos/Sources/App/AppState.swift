@@ -63,13 +63,18 @@ final class AppState {
             do {
                 try session.startSync(deviceName: name)
                 await MainActor.run {
+                    // Locked (or re-unlocked) while starting: this session is gone, shut it down.
+                    guard self.session === session else {
+                        session.stopSync()
+                        return
+                    }
                     self.syncRunning = true
                     self.syncError = nil
                     self.startRevisionPolling()
                 }
             } catch {
                 let msg = userMessage(error)
-                await MainActor.run { self.syncError = msg }
+                await MainActor.run { if self.session === session { self.syncError = msg } }
             }
         }
     }

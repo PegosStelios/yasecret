@@ -58,7 +58,7 @@ pub fn list(db: &Db) -> Result<Vec<Project>> {
 
 pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE project SET name = ?1, updated_at = ?2 WHERE id = ?3",
+        "UPDATE project SET name = ?1, updated_at = MAX(?2, updated_at + 1) WHERE id = ?3",
         rusqlite::params![new_name, now(), id],
     )?;
     if n == 0 { return Err(YasecretError::NotFound(format!("project {id}"))); }

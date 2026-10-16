@@ -98,7 +98,7 @@ fn share_join_edit_delete_roundtrip() {
     eventually("owner admits member", 30, || {
         owner.svc().members(&pid).unwrap().iter().any(|m| m.name == "member-mac" && m.level == "editor")
     });
-    assert_eq!(member.svc().status(&pid).unwrap().my_level, "editor");
+    eventually("member sees its editor access", 15, || member.svc().status(&pid).unwrap().my_level == "editor");
 
     // Member edits a value → owner sees it.
     {

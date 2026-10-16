@@ -49,6 +49,9 @@ pub fn rollback(
             },
         )
         .map_err(|_| YasecretError::NotFound(format!("version {version_id}")))?;
+    if v.secret_id != secret_id {
+        return Err(YasecretError::NotFound(format!("version {version_id} of {secret_id}")));
+    }
 
     let nonce: [u8; 12] = v.nonce.try_into().map_err(|_| YasecretError::Crypto)?;
     let plaintext = crypto::decrypt(&v.encrypted_value, &nonce, project_key)?;

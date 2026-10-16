@@ -28,6 +28,10 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         PRODUCT_NAME: Yasecret
         PRODUCT_BUNDLE_IDENTIFIER: com.yasecret.app
+        # A stable signature keeps Keychain access across rebuilds.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: KBUP5U37QG
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-L$(SRCROOT)/../target/debug"
@@ -59,3 +63,6 @@ targets:
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Apple Development"
+        DEVELOPMENT_TEAM: KBUP5U37QG

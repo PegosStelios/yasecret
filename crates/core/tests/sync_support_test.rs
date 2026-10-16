@@ -64,3 +64,38 @@ fn rotate_reencrypts_values_and_history() {
     let nonce: [u8; 12] = v.nonce.clone().try_into().unwrap();
     assert_eq!(crypto::decrypt(&v.encrypted_value, &nonce, &new).unwrap().as_slice(), b"v1");
 }
+
+#[test]
+fn edits_within_one_second_still_get_newer_timestamps() {
+    let (_d, db, db_key, pid, env) = setup();
+    let k = project_key::load(&db, &pid, &db_key).unwrap();
+    let s = secret::create(&db, &env, "A", b"1", &k, "owner", None).unwrap();
+    let mut last = s.updated_at;
+    secret::update(&db, &s.id, b"2", &k, "owner", None).unwrap();
+    let t = secret::list(&db, &env).unwrap()[0].updated_at;
+    assert!(t > last); last = t;
+    secret::set_kind(&db, &s.id, false, "owner").unwrap();
+    let t = secret::list(&db, &env).unwrap()[0].updated_at;
+    assert!(t > last); last = t;
+    secret::rename_key(&db, &s.id, "B", "owner").unwrap();
+    let t = secret::list(&db, &env).unwrap()[0].updated_at;
+    assert!(t > last); last = t;
+    secret::set_expiry(&db, &s.id, Some(1), "owner").unwrap();
+    assert!(secret::list(&db, &env).unwrap()[0].updated_at > last);
+
+    let before = environment::get(&db, &env).unwrap().updated_at;
+    environment::rename(&db, &env, "x").unwrap();
+    assert!(environment::get(&db, &env).unwrap().updated_at > before);
+}
+
+#[test]
+fn rollback_rejects_a_version_from_another_variable() {
+    let (_d, db, db_key, pid, env) = setup();
+    let k = project_key::load(&db, &pid, &db_key).unwrap();
+    let a = secret::create(&db, &env, "A", b"a1", &k, "owner", None).unwrap();
+    let b = secret::create(&db, &env, "B", b"b1", &k, "owner", None).unwrap();
+    secret::update(&db, &b.id, b"b2", &k, "owner", None).unwrap();
+    let bv = version::list(&db, &b.id).unwrap()[0].id.clone();
+    assert!(version::rollback(&db, &a.id, &bv, &k, "owner").is_err());
+    assert_eq!(secret::get_plaintext(&db, &a.id, &k).unwrap().as_slice(), b"a1");
+}

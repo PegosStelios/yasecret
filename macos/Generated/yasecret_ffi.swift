@@ -607,6 +607,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     func setMemberLevel(projectId: String, peerId: String, level: String) throws 
     
     /**
+     * Ids of projects that are shared with other devices (one cheap query, no network).
+     */
+    func sharedProjectIds() throws  -> [String]
+    
+    /**
      * Starts the background sync node. Safe to call more than once.
      */
     func startSync(deviceName: String) throws 
@@ -994,6 +999,16 @@ open func setMemberLevel(projectId: String, peerId: String, level: String)throws
         FfiConverterString.lower(level),$0
     )
 }
+}
+    
+    /**
+     * Ids of projects that are shared with other devices (one cheap query, no network).
+     */
+open func sharedProjectIds()throws  -> [String] {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_shared_project_ids(self.uniffiClonePointer(),$0
+    )
+})
 }
     
     /**
@@ -2664,6 +2679,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 59959) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_shared_project_ids() != 53374) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_start_sync() != 6479) {
