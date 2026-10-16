@@ -82,6 +82,9 @@ pub struct WMember {
     pub name: String,
     pub joined_at: i64,
     pub invite_id: Option<String>,
+    /// HMAC proving the joiner holds the project key; see `join_proof`.
+    #[serde(default)]
+    pub proof: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -110,6 +113,43 @@ mod keys {
     pub fn peer_key(peer: &str) -> String { format!("v2/peer_key/{peer}") }
     pub fn invite(id: &str) -> String { format!("v2/invite/{id}") }
     pub fn grant(peer: &str) -> String { format!("v2/grant/{peer}") }
+}
+
+/// Binds a membership claim to the project key, so holding the doc ticket alone can't admit anyone.
+pub fn join_proof(project_key: &[u8; 32], project_id: &str, peer_id: &str, author: &str) -> Vec<u8> {
+    hmac_sha256(project_key, format!("yasecret-join-v2|{project_id}|{peer_id}|{author}").as_bytes()).to_vec()
+}
+
+fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
+    let mut k = [0u8; 64];
+    if key.len() > 64 {
+        k[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    let mut inner = Sha256::new();
+    inner.update(k.iter().map(|b| b ^ 0x36).collect::<Vec<_>>());
+    inner.update(msg);
+    let mut outer = Sha256::new();
+    outer.update(k.iter().map(|b| b ^ 0x5c).collect::<Vec<_>>());
+    outer.update(inner.finalize());
+    outer.finalize().into()
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn sign_grant(signer: &Identity, project_id: &str, peer: &str, author: &str, level: &str) -> WGrant {
+    let granted_at = now();
+    let msg = grant_msg(project_id, peer, author, level, granted_at);
+    WGrant {
+        peer_id: peer.to_string(),
+        author: author.to_string(),
+        level: level.to_string(),
+        granted_at,
+        signature: crypto::sign(msg.as_bytes(), &signer.signing_key()),
+    }
 }
 
 fn grant_msg(project_id: &str, peer_id: &str, author: &str, level: &str, granted_at: i64) -> String {
@@ -490,7 +530,31 @@ impl SyncService {
                 .map(|g| g.author.clone())
                 .ok_or_else(|| SyncError::InvalidLink("that member hasn't finished joining yet".into()))?;
             let g = inner.sign_grant(&project_id, &peer, &author, &level);
-            inner.write(&doc, &keys::grant(&peer), serde_json::to_vec(&g)?).await
+            inner.write(&doc, &keys::grant(&peer), serde_json::to_vec(&g)?).await?;
+            if level == LEVEL_REMOVED {
+                // The removed device still holds the old key; switch everyone else to a new one.
+                let new_key = {
+                    let db = inner.db()?;
+                    let key = project_key::rotate(&db, &project_id, &inner.db_key)?;
+                    db.conn().execute(
+                        "UPDATE secret SET updated_at = updated_at + 1 WHERE env_id IN (SELECT id FROM environment WHERE project_id = ?1)",
+                        [&project_id],
+                    )?;
+                    db.conn().execute(
+                        "DELETE FROM sync_invite WHERE project_id = ?1 AND redeemed_by IS NULL",
+                        [&project_id],
+                    )?;
+                    Zeroizing::new(key)
+                };
+                for g in grants.values().filter(|g| g.peer_id != peer && g.peer_id != inner.my_peer && g.level != LEVEL_REMOVED) {
+                    let Some(pub_key) = hex::decode(&g.peer_id).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else { continue };
+                    let blob = crypto::encrypt_for_peer(new_key.as_ref(), &pub_key)?;
+                    inner.write(&doc, &keys::peer_key(&g.peer_id), blob).await?;
+                }
+                inner.reconcile(&project_id).await?;
+                inner.revision.fetch_add(1, Ordering::SeqCst);
+            }
+            Ok(())
         })
     }
 
@@ -648,15 +712,7 @@ impl Inner {
     }
 
     fn sign_grant(&self, project_id: &str, peer: &str, author: &str, level: &str) -> WGrant {
-        let granted_at = now();
-        let msg = grant_msg(project_id, peer, author, level, granted_at);
-        WGrant {
-            peer_id: peer.to_string(),
-            author: author.to_string(),
-            level: level.to_string(),
-            granted_at,
-            signature: crypto::sign(msg.as_bytes(), &self.identity.signing_key()),
-        }
+        sign_grant(&self.identity, project_id, peer, author, level)
     }
 
     fn schedule(self: &Arc<Self>, project_id: String, delay: Duration) {
@@ -812,7 +868,8 @@ impl Inner {
             inv.redeemed_by = Some(self.my_peer.clone());
             self.write(&doc, &keys::invite(id), serde_json::to_vec(&inv)?).await?;
         }
-        let member = WMember { peer_id: self.my_peer.clone(), name: self.device_name.clone(), joined_at: now(), invite_id };
+        let proof = join_proof(&project_key_bytes, &project.id, &self.my_peer, &self.author.to_string());
+        let member = WMember { peer_id: self.my_peer.clone(), name: self.device_name.clone(), joined_at: now(), invite_id, proof };
         self.write(&doc, &keys::member(&self.my_peer), serde_json::to_vec(&member)?).await?;
         self.reconcile(&project.id).await?;
         self.revision.fetch_add(1, Ordering::SeqCst);
@@ -931,10 +988,11 @@ fn plan_reconcile(
             plan.pushes.push((keys::grant(&inner.my_peer), serde_json::to_vec(&g)?));
         }
         if latest(entries, &keys::member(&inner.my_peer), |a| a == my_author).is_none() {
-            let m = WMember { peer_id: inner.my_peer.clone(), name: inner.device_name.clone(), joined_at: now(), invite_id: None };
+            let m = WMember { peer_id: inner.my_peer.clone(), name: inner.device_name.clone(), joined_at: now(), invite_id: None, proof: vec![] };
             plan.pushes.push((keys::member(&inner.my_peer), serde_json::to_vec(&m)?));
         }
-        admit_members(db, inner, project_id, entries, &grants, &mut plan)?;
+        let project_key = project_key::load(db, project_id, &inner.db_key)?;
+        plan.pushes.extend(admit_members(db, project_id, entries, &grants, &project_key, &inner.identity)?);
     }
 
     let writer_authors: HashSet<String> = grants
@@ -944,6 +1002,22 @@ fn plan_reconcile(
         .collect();
     let owner_authors: HashSet<String> = grants.values().filter(|g| g.level == LEVEL_OWNER).map(|g| g.author.clone()).collect();
     let i_can_write = am_owner || writer_authors.contains(my_author);
+
+    // Pick up a rotated project key before touching values encrypted with it.
+    if !am_owner {
+        if let Some(e) = latest(entries, &keys::peer_key(&inner.my_peer), |a| owner_authors.contains(a)) {
+            if let Some(key) = crypto::decrypt_from_peer(&e.content, &inner.identity.x25519_secret())
+                .ok()
+                .and_then(|p| <[u8; 32]>::try_from(p.as_slice()).ok())
+            {
+                let current = project_key::load(db, project_id, &inner.db_key)?;
+                if *current != key {
+                    project_key::rekey(db, project_id, &inner.db_key, &key)?;
+                    plan.changed_local = true;
+                }
+            }
+        }
+    }
 
     // Project name
     let local_project = yasecret_core::project::get(db, project_id)?;
@@ -1169,58 +1243,56 @@ fn apply_remote_secret(db: &Db, r: &WSecret, local: Option<&yasecret_core::model
     Ok(true)
 }
 
-/// Owner side: grant access to members who proved they redeemed an invite.
+/// Owner side: grant access to members who proved they hold the project key and match a
+/// pending invite. Returns the grant entries to publish.
 fn admit_members(
     db: &Db,
-    inner: &Inner,
     project_id: &str,
     entries: &[RawEntry],
     grants: &HashMap<String, WGrant>,
-    plan: &mut Plan,
-) -> Result<()> {
+    project_key: &[u8; 32],
+    signer: &Identity,
+) -> Result<Vec<(String, Vec<u8>)>> {
+    let mut pushes = Vec::new();
     for e in entries.iter().filter(|e| e.key.starts_with("v2/member/")) {
         let Ok(m) = serde_json::from_slice::<WMember>(&e.content) else { continue };
         if e.key != keys::member(&m.peer_id) || grants.contains_key(&m.peer_id) {
             continue;
         }
+        if !constant_time_eq(&m.proof, &join_proof(project_key, project_id, &m.peer_id, &e.author)) {
+            continue;
+        }
+        // An invite already redeemed by this same peer still qualifies, so a grant whose
+        // publish failed earlier is re-issued instead of leaving the member stuck.
         let pending: Option<(String, String)> = match &m.invite_id {
-            Some(invite_id) => {
-                let redeemed_by_this_author = entries.iter().any(|ie| {
-                    ie.key == keys::invite(invite_id)
-                        && ie.author == e.author
-                        && serde_json::from_slice::<WInvite>(&ie.content)
-                            .map(|i| i.redeemed_by.as_deref() == Some(m.peer_id.as_str()))
-                            .unwrap_or(false)
-                });
-                if !redeemed_by_this_author {
-                    continue;
-                }
-                db.conn()
-                    .query_row(
-                        "SELECT id, level FROM sync_invite WHERE id = ?1 AND project_id = ?2 AND kind = 'link' AND redeemed_by IS NULL AND expires_at >= ?3",
-                        rusqlite::params![invite_id, project_id, now()],
-                        |r| Ok((r.get(0)?, r.get(1)?)),
-                    )
-                    .ok()
-            }
+            Some(invite_id) => db
+                .conn()
+                .query_row(
+                    "SELECT id, level FROM sync_invite WHERE id = ?1 AND project_id = ?2 AND kind = 'link'
+                       AND (redeemed_by IS NULL OR redeemed_by = ?4) AND expires_at >= ?3",
+                    rusqlite::params![invite_id, project_id, now(), &m.peer_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .ok(),
             None => db
                 .conn()
                 .query_row(
-                    "SELECT id, level FROM sync_invite WHERE project_id = ?1 AND kind = 'device' AND peer_id = ?2 AND redeemed_by IS NULL AND expires_at >= ?3",
+                    "SELECT id, level FROM sync_invite WHERE project_id = ?1 AND kind = 'device' AND peer_id = ?2
+                       AND (redeemed_by IS NULL OR redeemed_by = ?2) AND expires_at >= ?3",
                     rusqlite::params![project_id, &m.peer_id, now()],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .ok(),
         };
         let Some((invite_row, level)) = pending else { continue };
-        let g = inner.sign_grant(project_id, &m.peer_id, &e.author, &level);
-        plan.pushes.push((keys::grant(&m.peer_id), serde_json::to_vec(&g)?));
+        let g = sign_grant(signer, project_id, &m.peer_id, &e.author, &level);
+        pushes.push((keys::grant(&m.peer_id), serde_json::to_vec(&g)?));
         db.conn().execute(
             "UPDATE sync_invite SET redeemed_by = ?1 WHERE id = ?2",
             rusqlite::params![&m.peer_id, &invite_row],
         )?;
     }
-    Ok(())
+    Ok(pushes)
 }
 
 #[cfg(test)]
@@ -1239,6 +1311,65 @@ mod tests {
         assert_eq!(InviteLink::parse(&link.to_url()).unwrap(), link);
         let device = InviteLink { secret: InviteSecret::DeviceBound, ..link };
         assert_eq!(InviteLink::parse(&device.to_url()).unwrap(), device);
+    }
+
+    fn owner_db() -> (tempfile::TempDir, Db, Identity, String, [u8; 32]) {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open(&dir.path().join("o.sqlite"), "pw").unwrap();
+        let me = identity::load_or_create(&db, "local").unwrap();
+        let p = yasecret_core::project::create(&db, "app", None, &me.id).unwrap();
+        db.conn().execute(
+            "INSERT INTO sync_invite (id,project_id,kind,peer_id,level,created_at,expires_at) VALUES ('inv1',?1,'link',NULL,'editor',0,?2)",
+            rusqlite::params![&p.id, now() + 3600],
+        ).unwrap();
+        db.conn().execute(
+            "INSERT INTO sync_invite (id,project_id,kind,peer_id,level,created_at,expires_at) VALUES ('dev1',?1,'device','victimpeer','viewer',0,?2)",
+            rusqlite::params![&p.id, now() + 3600],
+        ).unwrap();
+        (dir, db, me, p.id, [7u8; 32])
+    }
+
+    fn member_entry(peer: &str, author: &str, invite: Option<&str>, proof: Vec<u8>) -> RawEntry {
+        let m = WMember { peer_id: peer.into(), name: "x".into(), joined_at: 1, invite_id: invite.map(String::from), proof };
+        RawEntry { key: keys::member(peer), author: author.into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap() }
+    }
+
+    #[test]
+    fn ticket_holder_without_project_key_cannot_claim_a_link_invite() {
+        let (_d, db, me, pid, key) = owner_db();
+        let forged = member_entry("attacker", "attacker-author", Some("inv1"), vec![0u8; 32]);
+        let pushes = admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me).unwrap();
+        assert!(pushes.is_empty(), "no grant without a valid proof");
+    }
+
+    #[test]
+    fn ticket_holder_cannot_hijack_a_device_bound_invite() {
+        let (_d, db, me, pid, key) = owner_db();
+        let wrong_key = [9u8; 32];
+        let forged = member_entry("victimpeer", "attacker-author", None, join_proof(&wrong_key, &pid, "victimpeer", "attacker-author"));
+        assert!(admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me).unwrap().is_empty());
+    }
+
+    #[test]
+    fn joiner_with_valid_proof_is_admitted_once_and_regranted_if_needed() {
+        let (_d, db, me, pid, key) = owner_db();
+        let good = member_entry("friend", "friend-author", Some("inv1"), join_proof(&key, &pid, "friend", "friend-author"));
+        let pushes = admit_members(&db, &pid, &[good], &HashMap::new(), &key, &me).unwrap();
+        assert_eq!(pushes.len(), 1);
+        let g: WGrant = serde_json::from_slice(&pushes[0].1).unwrap();
+        assert_eq!((g.peer_id.as_str(), g.author.as_str(), g.level.as_str()), ("friend", "friend-author", "editor"));
+        // Grant never landed in the doc: the same member is granted again.
+        let again = member_entry("friend", "friend-author", Some("inv1"), join_proof(&key, &pid, "friend", "friend-author"));
+        assert_eq!(admit_members(&db, &pid, &[again], &HashMap::new(), &key, &me).unwrap().len(), 1);
+        // A different peer can't reuse the redeemed invite.
+        let other = member_entry("other", "other-author", Some("inv1"), join_proof(&key, &pid, "other", "other-author"));
+        assert!(admit_members(&db, &pid, &[other], &HashMap::new(), &key, &me).unwrap().is_empty());
+    }
+
+    #[test]
+    fn hmac_matches_rfc4231_case_2() {
+        let mac = hmac_sha256(b"Jefe", b"what do ya want for nothing?");
+        assert_eq!(hex::encode(mac), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
     }
 
     #[test]

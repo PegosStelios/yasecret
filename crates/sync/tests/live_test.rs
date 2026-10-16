@@ -156,3 +156,42 @@ fn device_bound_invite_only_works_for_that_device() {
     let env_id = environment::list(&viewer.db(), &pid).unwrap()[0].id.clone();
     eventually("viewer reads value", 30, || viewer.value(&pid, &env_id, "DB_URL").as_deref() == Some("postgres://prod"));
 }
+
+#[test]
+fn removing_a_member_rotates_the_key_for_everyone_else() {
+    let owner = Device::new("owner");
+    let (pid, env_id) = {
+        let db = owner.db();
+        let p = project::create(&db, "team", None, "owner").unwrap();
+        project_key::create(&db, &p.id, &owner.db_key).unwrap();
+        let pk = project_key::load(&db, &p.id, &owner.db_key).unwrap();
+        let env = environment::create(&db, &p.id, "prod").unwrap();
+        secret::create(&db, &env.id, "TOKEN", b"before", &pk, "owner", None).unwrap();
+        (p.id, env.id)
+    };
+    let stays = Device::new("stays");
+    let leaves = Device::new("leaves");
+    stays.svc().join(&owner.svc().create_invite(&pid, None, "editor").unwrap()).unwrap();
+    leaves.svc().join(&owner.svc().create_invite(&pid, None, "editor").unwrap()).unwrap();
+    for d in [&stays, &leaves] {
+        eventually("member has the value", 30, || d.value(&pid, &env_id, "TOKEN").as_deref() == Some("before"));
+    }
+    eventually("both admitted", 30, || {
+        owner.svc().members(&pid).unwrap().iter().filter(|m| m.level == "editor").count() == 2
+    });
+    let leaves_peer = leaves.svc().device_code();
+    owner.svc().set_member_level(&pid, &leaves_peer, "removed").unwrap();
+
+    {
+        let db = owner.db();
+        let pk = project_key::load(&db, &pid, &owner.db_key).unwrap();
+        let s = secret::list(&db, &env_id).unwrap().into_iter().find(|s| s.key == "TOKEN").unwrap();
+        std::thread::sleep(Duration::from_millis(1100));
+        secret::update(&db, &s.id, b"after", &pk, "owner", None).unwrap();
+    }
+    owner.svc().notify_local_change(&pid);
+
+    eventually("remaining member reads the new value", 40, || stays.value(&pid, &env_id, "TOKEN").as_deref() == Some("after"));
+    std::thread::sleep(Duration::from_secs(5));
+    assert_ne!(leaves.value(&pid, &env_id, "TOKEN").as_deref(), Some("after"), "removed member must not read new values");
+}
