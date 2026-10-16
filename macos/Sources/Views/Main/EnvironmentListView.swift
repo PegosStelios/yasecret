@@ -69,7 +69,9 @@ struct EnvironmentListView: View {
                     .buttonStyle(.borderless)
                     .help("Activity")
                     Button(action: onShare) {
-                        Label(sharing.isShared ? "Sharing" : "Share", systemImage: "person.crop.circle.badge.plus")
+                        Label("Share", systemImage: "person.crop.circle.badge.plus")
+                            .lineLimit(1)
+                            .fixedSize()
                     }
                     .buttonStyle(.borderless)
                     .help("Share this project with teammates")

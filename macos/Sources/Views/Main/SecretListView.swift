@@ -195,17 +195,17 @@ struct SecretListView: View {
                     }
                 }
             }
-            .width(min: 140, ideal: 220)
+            .width(min: 120, ideal: 200)
 
             TableColumn("Value") { s in valueCell(s) }
-                .width(min: 180, ideal: 320)
+                .width(min: 160)
 
             TableColumn("Updated") { s in
                 Text(Date(timeIntervalSince1970: TimeInterval(s.updatedAt)),
                      format: .relative(presentation: .named))
                     .foregroundStyle(.secondary)
             }
-            .width(min: 80, ideal: 110)
+            .width(min: 90, ideal: 100, max: 130)
         }
         .contextMenu(forSelectionType: String.self) { ids in
             menu(for: ids)
