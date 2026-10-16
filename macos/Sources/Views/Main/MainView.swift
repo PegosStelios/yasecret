@@ -58,6 +58,10 @@ struct MainView: View {
             if projectsVM.selectedProjectId == nil {
                 projectsVM.selectedProjectId = projectsVM.projects.first?.id
             }
+            if DevHook.open?.hasPrefix("share") == true {
+                try? await Task.sleep(for: .seconds(1))
+                showingShare = true
+            }
         }
         .onChange(of: projectsVM.selectedProjectId) { _, projId in
             envsVM.selectedEnvId = nil

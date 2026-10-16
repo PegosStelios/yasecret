@@ -150,3 +150,22 @@ struct NameSheet: View {
         dismiss()
     }
 }
+
+/// Debug-only launch hooks for UI testing and screenshots (absent from release builds).
+enum DevHook {
+    static var open: String? {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["YASECRET_DEV_OPEN"]
+        #else
+        nil
+        #endif
+    }
+
+    static var importText: String {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["YASECRET_DEV_IMPORT"]?.replacingOccurrences(of: "\\n", with: "\n") ?? ""
+        #else
+        ""
+        #endif
+    }
+}

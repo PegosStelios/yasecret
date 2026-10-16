@@ -64,6 +64,17 @@ struct ShareSheet: View {
         .padding(20)
         .frame(width: 560)
         .task {
+            if DevHook.open == "share-invite" {
+                // Sync starts in the background after unlock; retry until it's up.
+                for _ in 0..<20 where link == nil {
+                    try? await Task.sleep(for: .seconds(1))
+                    if let url = try? session.createInvite(projectId: projectId, deviceCode: nil, level: "editor") {
+                        link = url
+                    }
+                }
+            }
+        }
+        .task {
             while !Task.isCancelled {
                 sharing.refresh(projectId: projectId, session: session)
                 try? await Task.sleep(for: .seconds(3))

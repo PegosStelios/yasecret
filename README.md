@@ -6,6 +6,8 @@ A local-first secrets manager for `.env` files. Your variables live in an encryp
 - **CLI** for pulling `.env` files and running commands with secrets injected.
 - **MCP server** so Claude Code can use secrets without seeing their values.
 
+![Yasecret on macOS](docs/screenshots/macos-main.png)
+
 > Status: early (0.1). It works end to end and is covered by tests, but it has not had an external security review. Don't trust it with production credentials you can't rotate.
 
 ## Features
@@ -18,6 +20,16 @@ A local-first secrets manager for `.env` files. Your variables live in an encryp
 - **Expiry dates** on variables with reminders a week before.
 - **Sharing without a server.** Devices sync peer-to-peer; invite teammates with edit or view-only access.
 - **Locking.** Touch ID / Keychain on macOS, Windows Credential Manager on Windows; auto-lock on sleep or screen lock (macOS) or after 10 minutes idle (Windows). Copied secrets are cleared from the clipboard after 60 seconds.
+
+## Screenshots
+
+| Sharing a project | Importing a `.env` |
+|---|---|
+| ![Share sheet with an invite link and the people list](docs/screenshots/macos-share.png) | ![Import preview marking new and existing keys and detected secrets](docs/screenshots/macos-import.png) |
+
+The desktop app (Tauri, the Windows build) has the same layout. Shown here running on macOS:
+
+![Tauri desktop app](docs/screenshots/desktop-tauri.png)
 
 ## Install
 

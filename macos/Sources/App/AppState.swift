@@ -58,7 +58,10 @@ final class AppState {
 
     private func startSync() {
         guard let session else { return }
-        let name = Host.current().localizedName ?? "Mac"
+        var name = Host.current().localizedName ?? "Mac"
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["YASECRET_DEV_DEVICE_NAME"] { name = override }
+        #endif
         Task.detached {
             do {
                 try session.startSync(deviceName: name)

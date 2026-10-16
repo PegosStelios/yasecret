@@ -36,6 +36,12 @@ struct ImportEnvView: View {
         }
         .padding(20)
         .frame(width: 640, height: 480)
+        .onAppear {
+            if DevHook.open == "import" {
+                content = DevHook.importText
+                buildPreview()
+            }
+        }
     }
 
     // MARK: Step 1 — source
@@ -93,12 +99,14 @@ struct ImportEnvView: View {
                 summaryChip("\(drafts.filter(\.isSecret).count) secret", .secondary)
                 Spacer()
                 if drafts.contains(where: \.exists) {
-                    Picker("Existing:", selection: $overwrite) {
+                    Text("Existing:").foregroundStyle(.secondary).fixedSize()
+                    Picker("Existing", selection: $overwrite) {
                         Text("Skip").tag(false)
                         Text("Overwrite").tag(true)
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 220)
+                    .labelsHidden()
+                    .fixedSize()
                 }
             }
 
@@ -110,25 +118,26 @@ struct ImportEnvView: View {
                 TableColumn("Key") { d in
                     Text(d.key).font(.system(.body, design: .monospaced))
                 }
-                .width(min: 140, ideal: 200)
+                .width(min: 120, ideal: 190)
                 TableColumn("Value") { d in
                     Text(d.isSecret ? String(repeating: "•", count: min(max(d.value.count, 4), 12)) : d.value)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(d.isSecret ? .secondary : .primary)
                         .lineLimit(1)
                 }
-                .width(min: 120, ideal: 200)
+                .width(min: 100)
                 TableColumn("Status") { d in
                     Text(d.exists ? (overwrite ? "Overwrite" : "Skip") : "New")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(d.exists ? Color.orange : Color.green)
                 }
-                .width(70)
+                .width(64)
                 TableColumn("Secret") { d in
                     Toggle("", isOn: binding(d.id, \.isSecret)).labelsHidden()
                 }
-                .width(50)
+                .width(48)
             }
+            .alternatingRowBackgrounds(.disabled)
 
             Text("Names containing KEY, TOKEN, SECRET, PASSWORD, PRIVATE, AUTH or CREDENTIAL are marked secret automatically.")
                 .font(.caption)

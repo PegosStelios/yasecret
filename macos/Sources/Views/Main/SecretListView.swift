@@ -101,6 +101,7 @@ struct SecretListView: View {
         }
         .errorAlert($vm.errorMessage)
         .task(id: vm.secrets) { loadPlainValues() }
+        .task { if DevHook.open == "import" { showingImport = true } }
     }
 
     // MARK: Header
