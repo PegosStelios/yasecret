@@ -26,6 +26,20 @@ async fn node_id_is_stable_for_same_key() {
 }
 
 #[tokio::test]
+async fn second_node_on_same_dir_fails_fast_instead_of_hanging() {
+    let dir = tempdir().unwrap();
+    let key = [5u8; 32];
+    let first = SyncNode::start(dir.path(), &key).await.unwrap();
+    let second = tokio::time::timeout(std::time::Duration::from_secs(10), SyncNode::start(dir.path(), &key))
+        .await
+        .expect("second start must not hang");
+    assert!(matches!(second, Err(yasecret_sync::SyncError::InUse)));
+    first.stop().await;
+    let again = SyncNode::start(dir.path(), &key).await.unwrap();
+    again.stop().await;
+}
+
+#[tokio::test]
 async fn start_with_corrupt_key_file_errors() {
     let dir = tempdir().unwrap();
     let key_path = dir.path().join("sync.key");

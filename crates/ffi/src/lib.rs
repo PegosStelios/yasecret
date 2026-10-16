@@ -170,6 +170,7 @@ pub struct YasecretSession {
     password: String,
     db_key: Zeroizing<[u8; 32]>,
     sync: std::sync::Mutex<Option<Arc<yasecret_sync::live::SyncService>>>,
+    sync_start: std::sync::Mutex<()>,
 }
 
 #[uniffi::export]
@@ -200,7 +201,7 @@ impl YasecretSession {
         // Verify password — Db::open returns WrongPassword on bad SQLCipher key
         Db::open(path, &password).map_err(FfiError::from)?;
 
-        Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None) }))
+        Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None), sync_start: std::sync::Mutex::new(()) }))
     }
 
     // ── Projects ──────────────────────────────────────────────────────────────
@@ -630,8 +631,10 @@ impl YasecretSession {
 
     /// Starts the background sync node. Safe to call more than once.
     pub fn start_sync(&self, device_name: String) -> Result<(), FfiError> {
-        let mut guard = self.sync.lock().unwrap();
-        if guard.is_some() {
+        // Starting can take a while; never hold the lock meanwhile or every sync call on
+        // the UI thread would wait for it.
+        let _starting = self.sync_start.lock().unwrap();
+        if self.sync.lock().unwrap().is_some() {
             return Ok(());
         }
         let data_dir = Path::new(&self.db_path)
@@ -645,7 +648,7 @@ impl YasecretSession {
             data_dir,
             device_name,
         })?;
-        *guard = Some(Arc::new(svc));
+        *self.sync.lock().unwrap() = Some(Arc::new(svc));
         Ok(())
     }
 

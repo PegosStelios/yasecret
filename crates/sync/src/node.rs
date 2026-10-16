@@ -7,6 +7,8 @@ pub struct SyncNode {
     docs: iroh_docs::protocol::Docs,
     // Held so the on-disk blob store actor stays alive for the node's lifetime.
     blobs: iroh_blobs::store::fs::FsStore,
+    // Exclusive lock on `{data_dir}/sync.lock`; another process opening the same stores would hang.
+    dir_lock: std::sync::Mutex<Option<std::fs::File>>,
 }
 
 impl SyncNode {
@@ -31,6 +33,17 @@ impl SyncNode {
             *key_bytes
         };
 
+        let lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(data_dir.join("sync.lock"))?;
+        match lock_file.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => return Err(SyncError::InUse),
+            Err(std::fs::TryLockError::Error(e)) => return Err(SyncError::Io(e)),
+        }
+
         let sk = iroh::SecretKey::from_bytes(&secret_bytes);
         let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
             .secret_key(sk)
@@ -54,7 +67,7 @@ impl SyncNode {
             .accept(iroh_docs::ALPN, docs.clone())
             .spawn();
 
-        Ok(Self { router, docs, blobs })
+        Ok(Self { router, docs, blobs, dir_lock: std::sync::Mutex::new(Some(lock_file)) })
     }
 
     /// Node ID as lowercase hex (stable for the same secret key).
@@ -75,6 +88,7 @@ impl SyncNode {
     pub async fn shutdown(&self) {
         let _ = self.router.shutdown().await;
         let _ = self.blobs.shutdown().await;
+        self.dir_lock.lock().unwrap().take();
     }
 
     pub async fn stop(self) {

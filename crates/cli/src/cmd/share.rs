@@ -62,15 +62,11 @@ pub(crate) fn start(path: &std::path::Path, session: &crate::unlock::Session) ->
         data_dir,
         device_name: hostname(),
     })
-    .map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("lock") || msg.contains("Database already open") {
-            YasecretError::Io(std::io::Error::other(
-                "the Yasecret app is running and owns the sync node — share or join from the app instead",
-            ))
-        } else {
-            sync_err(e)
-        }
+    .map_err(|e| match e {
+        yasecret_sync::SyncError::InUse => YasecretError::Io(std::io::Error::other(
+            "the Yasecret app (or another `yasecret share`) is running for this vault — share or join from there instead",
+        )),
+        other => sync_err(other),
     })
 }
 

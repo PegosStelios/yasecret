@@ -25,6 +25,8 @@ pub enum SyncError {
     InvalidLink(String),
     #[error("That device code isn't valid — it should be 64 characters (letters a–f and digits)")]
     InvalidDeviceCode,
+    #[error("Sync is already running for this vault in another process (another Yasecret window or `yasecret share`). Close it and try again")]
+    InUse,
     #[error("Only the project owner can do that")]
     NotOwner,
     #[error("You already have this project")]
