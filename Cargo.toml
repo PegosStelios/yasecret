@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/cli", "crates/sync", "crates/ffi", "tools/uniffi-bindgen"]
+members = ["crates/core", "crates/cli", "crates/sync", "crates/ffi", "tools/uniffi-bindgen", "desktop/src-tauri"]
 resolver = "2"
 
 [workspace.dependencies]

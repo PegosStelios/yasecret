@@ -1,0 +1,52 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # SQLCipher builds a vendored OpenSSL on Windows, which needs NASM (Perl ships with the runner).
+      - uses: ilammy/setup-nasm@v1
+
+      - name: Rust tests
+        run: cargo test -p yasecret-core -p yasecret-ffi
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build installers
+        working-directory: desktop
+        run: pnpm tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yasecret-windows
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: error

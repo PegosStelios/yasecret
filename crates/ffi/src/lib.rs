@@ -54,6 +54,8 @@ impl From<yasecret_core::error::YasecretError> for FfiError {
 // ── Records ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiProject {
     pub id: String,
     pub name: String,
@@ -61,6 +63,8 @@ pub struct FfiProject {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiEnvironment {
     pub id: String,
     pub project_id: String,
@@ -69,6 +73,8 @@ pub struct FfiEnvironment {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiSecret {
     pub id: String,
     pub env_id: String,
@@ -92,6 +98,8 @@ impl From<yasecret_core::models::Secret> for FfiSecret {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiImportRow {
     pub key: String,
     pub value: String,
@@ -100,6 +108,8 @@ pub struct FfiImportRow {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiImportItem {
     pub key: String,
     pub value: String,
@@ -107,6 +117,8 @@ pub struct FfiImportItem {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiImportSummary {
     pub added: u32,
     pub updated: u32,
@@ -116,6 +128,8 @@ pub struct FfiImportSummary {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiVersion {
     pub id: String,
     pub value: String,
@@ -125,6 +139,8 @@ pub struct FfiVersion {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiActivity {
     pub id: String,
     pub timestamp: i64,
@@ -135,6 +151,8 @@ pub struct FfiActivity {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiDiffRow {
     pub key: String,
     /// "same", "different", "only_left" or "only_right"
@@ -146,6 +164,8 @@ pub struct FfiDiffRow {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiMember {
     pub peer_id: String,
     pub name: String,
@@ -155,6 +175,8 @@ pub struct FfiMember {
 }
 
 #[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiSyncStatus {
     pub shared: bool,
     pub is_owner: bool,

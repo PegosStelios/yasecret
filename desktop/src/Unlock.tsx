@@ -1,0 +1,75 @@
+import { FormEvent, useEffect, useState } from "react";
+import { Lock } from "lucide-react";
+import { api, errorText, VaultState } from "./api";
+import { Button, TextInput } from "./ui";
+
+export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
+  const [state, setState] = useState<VaultState | null>(null);
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [remember, setRemember] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.vaultState().then(async (s) => {
+      setState(s);
+      if (s.devPassword) {
+        await api.devUnlock().then(onUnlocked).catch((e) => setError(errorText(e)));
+      }
+    });
+  }, [onUnlocked]);
+
+  const submit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.unlock(password, state?.firstRun ? confirm : null, remember);
+      onUnlocked();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useSaved = async () => {
+    setBusy(true);
+    try {
+      await api.unlockRemembered();
+      onUnlocked();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!state) return null;
+  const firstRun = state.firstRun;
+  return (
+    <div className="flex h-full items-center justify-center">
+      <form onSubmit={submit} className="flex w-72 flex-col items-center gap-3">
+        <Lock size={44} className="mb-1 text-muted" />
+        <h1 className="text-[26px] font-bold">Yasecret</h1>
+        {firstRun && <p className="text-muted">Create your master password</p>}
+        <TextInput type="password" autoFocus placeholder="Master password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        {firstRun && <TextInput type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
+        <label className="flex w-full items-center gap-2 text-muted">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          Remember on this device
+        </label>
+        {error && <p className="text-[13px] text-danger">{error}</p>}
+        <Button type="submit" variant="primary" disabled={busy || !password || (firstRun && !confirm)} className="w-full justify-center">
+          {busy ? "Unlocking…" : firstRun ? "Create Vault" : "Unlock"}
+        </Button>
+        {state.hasRemembered && !firstRun && (
+          <Button variant="ghost" onClick={useSaved} disabled={busy}>
+            Unlock with saved password
+          </Button>
+        )}
+      </form>
+    </div>
+  );
+}

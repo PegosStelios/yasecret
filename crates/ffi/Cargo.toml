@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "lib"]
 name       = "yasecret_ffi"
 
 [dependencies]
@@ -17,6 +17,11 @@ dirs          = { workspace = true }
 thiserror     = "1"
 uuid          = { workspace = true }
 rusqlite      = { workspace = true }
+serde         = { workspace = true, optional = true }
+
+[features]
+# Lets the Tauri desktop app return records to its web UI.
+serde = ["dep:serde"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
