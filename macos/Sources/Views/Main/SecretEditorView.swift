@@ -22,6 +22,9 @@ struct SecretEditorView: View {
     @State private var kindTouched = false
     @State private var showValue = false
     @State private var error: String?
+    @State private var expires = false
+    @State private var expiryDate = Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()
+    @State private var originalExpiry: Int64?
 
     private var existing: FfiSecret? { request.secret }
 
@@ -81,6 +84,16 @@ struct SecretEditorView: View {
             }
             .toggleStyle(.switch)
 
+            HStack {
+                Toggle("Expires", isOn: $expires)
+                if expires {
+                    DatePicker("", selection: $expiryDate, in: Date()..., displayedComponents: .date)
+                        .labelsHidden()
+                    Text("You'll get a reminder a week before.").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
             if let error {
                 Text(error).font(.callout).foregroundStyle(.red)
             }
@@ -104,6 +117,11 @@ struct SecretEditorView: View {
         guard let s = existing else { return }
         key = s.key
         isSecret = s.isSecret
+        originalExpiry = s.expiresAt
+        if let exp = s.expiresAt {
+            expires = true
+            expiryDate = Date(timeIntervalSince1970: TimeInterval(exp))
+        }
         let current = (try? session.getSecretPlaintext(projectId: projectId, secretId: s.id)) ?? ""
         value = current
         originalValue = current
@@ -111,13 +129,15 @@ struct SecretEditorView: View {
 
     private func save() {
         let ok: Bool
+        let newExpiry: Int64? = expires ? Int64(expiryDate.timeIntervalSince1970) : nil
         if let s = existing {
             ok = vm.editSecret(projectId: projectId, secret: s, newKey: key,
                                newValue: value == originalValue ? nil : value,
                                isSecret: isSecret, session: session)
+                && (newExpiry == originalExpiry || vm.setExpiry(projectId: projectId, secret: s, expiresAt: newExpiry, session: session))
         } else {
             ok = vm.createSecret(projectId: projectId, envId: envId, key: key, value: value,
-                                 isSecret: isSecret, session: session)
+                                 isSecret: isSecret, expiresAt: newExpiry, session: session)
         }
         if ok {
             onSaved()

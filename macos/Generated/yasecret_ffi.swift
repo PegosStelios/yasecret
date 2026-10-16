@@ -549,6 +549,12 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func exportEnv(projectId: String, envId: String) throws  -> String
     
+    /**
+     * `format`: dotenv, json, docker-compose, k8s-secret, k8s-configmap or example.
+     * `keys` limits the export to those variables; `None` exports all.
+     */
+    func exportVariables(projectId: String, envId: String, format: String, keys: [String]?, includeSecretValues: Bool, name: String) throws  -> String
+    
     func getSecretPlaintext(projectId: String, secretId: String) throws  -> String
     
     func grantMcpAccess() throws 
@@ -592,6 +598,8 @@ public protocol YasecretSessionProtocol : AnyObject {
     func renameProject(projectId: String, newName: String) throws 
     
     func restoreVersion(projectId: String, secretId: String, versionId: String) throws 
+    
+    func setExpiry(projectId: String, secretId: String, expiresAt: Int64?) throws 
     
     /**
      * `level` is "editor", "viewer" or "removed".
@@ -808,6 +816,23 @@ open func exportEnv(projectId: String, envId: String)throws  -> String {
 })
 }
     
+    /**
+     * `format`: dotenv, json, docker-compose, k8s-secret, k8s-configmap or example.
+     * `keys` limits the export to those variables; `None` exports all.
+     */
+open func exportVariables(projectId: String, envId: String, format: String, keys: [String]?, includeSecretValues: Bool, name: String)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_export_variables(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(envId),
+        FfiConverterString.lower(format),
+        FfiConverterOptionSequenceString.lower(keys),
+        FfiConverterBool.lower(includeSecretValues),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
+    
 open func getSecretPlaintext(projectId: String, secretId: String)throws  -> String {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_get_secret_plaintext(self.uniffiClonePointer(),
@@ -946,6 +971,15 @@ open func restoreVersion(projectId: String, secretId: String, versionId: String)
         FfiConverterString.lower(projectId),
         FfiConverterString.lower(secretId),
         FfiConverterString.lower(versionId),$0
+    )
+}
+}
+    
+open func setExpiry(projectId: String, secretId: String, expiresAt: Int64?)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_set_expiry(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(secretId),
+        FfiConverterOptionInt64.lower(expiresAt),$0
     )
 }
 }
@@ -2221,6 +2255,55 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceString.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiActivity: FfiConverterRustBuffer {
     typealias SwiftType = [FfiActivity]
 
@@ -2526,6 +2609,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_export_env() != 38987) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_export_variables() != 25075) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_get_secret_plaintext() != 42944) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2572,6 +2658,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_restore_version() != 50406) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_expiry() != 25215) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 59959) {

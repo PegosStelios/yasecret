@@ -125,6 +125,18 @@ pub fn set_kind(db: &Db, secret_id: &str, is_secret: bool, caller_id: &str) -> R
     Ok(())
 }
 
+pub fn set_expiry(db: &Db, secret_id: &str, expires_at: Option<i64>, caller_id: &str) -> Result<()> {
+    let n = db.conn().execute(
+        "UPDATE secret SET expires_at=?1, updated_at=?2 WHERE id=?3",
+        rusqlite::params![expires_at, now(), secret_id],
+    )?;
+    if n == 0 {
+        return Err(YasecretError::NotFound(format!("secret {secret_id}")));
+    }
+    audit::append(db, caller_id, "changed_expiry", "secret", secret_id, None)?;
+    Ok(())
+}
+
 pub fn rename_key(db: &Db, secret_id: &str, new_key: &str, caller_id: &str) -> Result<()> {
     let n = db.conn().execute(
         "UPDATE secret SET key=?1, updated_at=?2 WHERE id=?3",

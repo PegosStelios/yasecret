@@ -25,6 +25,7 @@
 		6FE438EC63326FAF69AC44F5 /* LoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309EFCDBF091ACC9147EE59B /* LoadingView.swift */; };
 		74349B909E2A016ED93C0E17 /* McpTofuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4C1301B50B4CB590C1A037 /* McpTofuTests.swift */; };
 		7B771A70FD1E0D4F68A2D891 /* ProjectsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */; };
+		8E982CE89339A916101E0FA5 /* ExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D66D26F281DB581EE6DE3122 /* ExportSheet.swift */; };
 		A1E0649A7BDB3878F817B6F7 /* EnvironmentListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB5312C507CE87A55E91465D /* EnvironmentListView.swift */; };
 		A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F812ACEDBE3856E75387F03 /* YasecretApp.swift */; };
 		B4A4640C6AF45ED85FC9824B /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062316329A998FB982ACA9CD /* NotificationService.swift */; };
@@ -80,6 +81,7 @@
 		C11DAAD1F263A9438F8386D3 /* JoinSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinSheet.swift; sourceTree = "<group>"; };
 		CC0474A09FF57C4E5635E230 /* Yasecret.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Yasecret.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D4454781EDAADA6FF1A2FAF6 /* SharingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingViewModel.swift; sourceTree = "<group>"; };
+		D66D26F281DB581EE6DE3122 /* ExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSheet.swift; sourceTree = "<group>"; };
 		E42014ECF5C8D0D8BC38F12A /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		E53A3E4866555ECB2211D298 /* ImportEnvView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportEnvView.swift; sourceTree = "<group>"; };
 		EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectListView.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 			isa = PBXGroup;
 			children = (
 				AB5312C507CE87A55E91465D /* EnvironmentListView.swift */,
+				D66D26F281DB581EE6DE3122 /* ExportSheet.swift */,
 				E53A3E4866555ECB2211D298 /* ImportEnvView.swift */,
 				E42014ECF5C8D0D8BC38F12A /* MainView.swift */,
 				EC382378CC353AE0C9FB0AF2 /* ProjectListView.swift */,
@@ -345,6 +348,7 @@
 				2B24B1C6EFFC68DF4298EDE8 /* CompareSheet.swift in Sources */,
 				A1E0649A7BDB3878F817B6F7 /* EnvironmentListView.swift in Sources */,
 				2A4D2B50E1BBE19ADB596B8B /* EnvironmentsViewModel.swift in Sources */,
+				8E982CE89339A916101E0FA5 /* ExportSheet.swift in Sources */,
 				5488A5D32C5A188F3EFE6CA5 /* HistorySheet.swift in Sources */,
 				F2621DCBEADC9E7ED8880E7D /* ImportEnvView.swift in Sources */,
 				C80569D013CDB72CC1C8851D /* JoinSheet.swift in Sources */,

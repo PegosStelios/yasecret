@@ -56,6 +56,18 @@ final class SecretsViewModel {
         }
     }
 
+    @discardableResult
+    func setExpiry(projectId: String, secret: FfiSecret, expiresAt: Int64?, session: YasecretSession) -> Bool {
+        do {
+            try session.setExpiry(projectId: projectId, secretId: secret.id, expiresAt: expiresAt)
+            secrets = try session.listSecrets(envId: secret.envId)
+            return true
+        } catch {
+            errorMessage = userMessage(error)
+            return false
+        }
+    }
+
     func updateSecret(projectId: String, secretId: String, newValue: String, session: YasecretSession) {
         do {
             try session.updateSecret(projectId: projectId, secretId: secretId, newValue: newValue)

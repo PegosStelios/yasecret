@@ -26,7 +26,7 @@ struct MainView: View {
         } detail: {
             if let env = envsVM.selectedEnvironment, let proj = selectedProject {
                 SecretListView(vm: secretsVM, projectId: proj.id, envId: env.id, envName: env.name,
-                               readOnly: sharingVM.isReadOnly, onChanged: refreshEnvironmentCounts)
+                               projectName: proj.name, readOnly: sharingVM.isReadOnly, onChanged: refreshEnvironmentCounts)
                     .id(env.id)
             } else {
                 ContentUnavailableView("Select an environment", systemImage: "list.bullet.rectangle")

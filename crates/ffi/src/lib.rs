@@ -611,6 +611,45 @@ impl YasecretSession {
         Ok(r)
     }
 
+    /// `format`: dotenv, json, docker-compose, k8s-secret, k8s-configmap or example.
+    /// `keys` limits the export to those variables; `None` exports all.
+    pub fn export_variables(
+        &self,
+        project_id: String,
+        env_id: String,
+        format: String,
+        keys: Option<Vec<String>>,
+        include_secret_values: bool,
+        name: String,
+    ) -> Result<String, FfiError> {
+        let fmt = env_file::ExportFormat::parse(&format)
+            .ok_or_else(|| FfiError::Parse { msg: format!("unknown export format {format}") })?;
+        let db = self.open()?;
+        let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
+        let wanted: Option<std::collections::HashSet<String>> = keys.map(|k| k.into_iter().collect());
+        let mut items = Vec::new();
+        for s in yasecret_core::secret::list(&db, &env_id)? {
+            if wanted.as_ref().is_some_and(|w| !w.contains(&s.key)) {
+                continue;
+            }
+            let value = if s.is_secret && !include_secret_values {
+                String::new()
+            } else {
+                String::from_utf8_lossy(&yasecret_core::secret::get_plaintext(&db, &s.id, &pk)?).into_owned()
+            };
+            items.push(env_file::ExportItem { key: s.key, value, is_secret: s.is_secret });
+        }
+        Ok(env_file::export(&items, fmt, &name)?)
+    }
+
+    pub fn set_expiry(&self, project_id: String, secret_id: String, expires_at: Option<i64>) -> Result<(), FfiError> {
+        let db = self.open()?;
+        let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
+        yasecret_core::secret::set_expiry(&db, &secret_id, expires_at, &me)?;
+        self.touched(&project_id);
+        Ok(())
+    }
+
     pub fn export_env(
         &self,
         project_id: String,
@@ -1074,6 +1113,20 @@ mod tests {
         assert_eq!(status("ONLY_PROD"), "only_right");
         let diff = rows.iter().find(|r| r.key == "DIFF").unwrap();
         assert_eq!((diff.left_value.as_deref(), diff.right_value.as_deref()), (Some("a"), Some("b")));
+    }
+
+    #[test]
+    fn export_variables_respects_keys_and_secret_toggle() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        session.create_secret(p.clone(), e.clone(), "API_KEY".into(), "sk".into(), None, true).unwrap();
+        session.create_secret(p.clone(), e.clone(), "PORT".into(), "3000".into(), None, false).unwrap();
+        let masked = session.export_variables(p.clone(), e.clone(), "json".into(), None, false, "app".into()).unwrap();
+        assert!(masked.contains("\"API_KEY\": \"\"") && masked.contains("3000"));
+        let only = session.export_variables(p.clone(), e.clone(), "dotenv".into(), Some(vec!["API_KEY".into()]), true, "app".into()).unwrap();
+        assert_eq!(only, "API_KEY=sk\n");
+        assert!(session.export_variables(p, e, "yaml".into(), None, true, "app".into()).is_err());
     }
 
     #[test]

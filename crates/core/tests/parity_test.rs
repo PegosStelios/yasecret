@@ -121,3 +121,58 @@ fn looks_secret_flags_sensitive_names() {
         assert!(!env_file::looks_secret(k), "{k} should look plain");
     }
 }
+
+fn sample() -> Vec<env_file::ExportItem> {
+    vec![
+        env_file::ExportItem { key: "API_KEY".into(), value: "sk \"live\"".into(), is_secret: true },
+        env_file::ExportItem { key: "PORT".into(), value: "3000".into(), is_secret: false },
+    ]
+}
+
+#[test]
+fn export_json_is_valid_object() {
+    let out = env_file::export(&sample(), env_file::ExportFormat::Json, "app").unwrap();
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["API_KEY"], "sk \"live\"");
+    assert_eq!(v["PORT"], "3000");
+}
+
+#[test]
+fn export_docker_compose_quotes_values() {
+    let out = env_file::export(&sample(), env_file::ExportFormat::DockerCompose, "app").unwrap();
+    assert!(out.contains("services:\n  app:\n    environment:\n"));
+    assert!(out.contains("      API_KEY: \"sk \\\"live\\\"\"\n"));
+}
+
+#[test]
+fn export_k8s_secret_base64_encodes() {
+    let out = env_file::export(&sample(), env_file::ExportFormat::K8sSecret, "My App!").unwrap();
+    assert!(out.contains("kind: Secret"));
+    assert!(out.contains("name: my-app"));
+    assert!(out.contains("  PORT: MzAwMA==\n"));
+}
+
+#[test]
+fn export_k8s_configmap_has_plain_data() {
+    let out = env_file::export(&sample(), env_file::ExportFormat::K8sConfigMap, "app").unwrap();
+    assert!(out.contains("kind: ConfigMap"));
+    assert!(out.contains("  PORT: \"3000\"\n"));
+}
+
+#[test]
+fn export_example_has_keys_but_no_values() {
+    let out = env_file::export(&sample(), env_file::ExportFormat::Example, "app").unwrap();
+    assert!(out.contains("API_KEY=  # secret\n"));
+    assert!(out.contains("PORT=\n"));
+    assert!(!out.contains("3000") && !out.contains("live"));
+}
+
+#[test]
+fn set_expiry_and_clear() {
+    let (_d, db, k, env, _) = setup();
+    let s = secret::create(&db, &env, "TOKEN", b"x", &k, "owner", None).unwrap();
+    secret::set_expiry(&db, &s.id, Some(4_000_000_000), "owner").unwrap();
+    assert_eq!(secret::list(&db, &env).unwrap()[0].expires_at, Some(4_000_000_000));
+    secret::set_expiry(&db, &s.id, None, "owner").unwrap();
+    assert_eq!(secret::list(&db, &env).unwrap()[0].expires_at, None);
+}

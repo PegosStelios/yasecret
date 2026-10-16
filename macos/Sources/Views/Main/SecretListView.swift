@@ -7,6 +7,7 @@ struct SecretListView: View {
     let projectId: String
     let envId: String
     let envName: String
+    var projectName = ""
     var readOnly = false
     var onChanged: () -> Void = {}
 
@@ -19,6 +20,8 @@ struct SecretListView: View {
     @State private var copiedId: String?
     @State private var banner: String?
     @State private var historyFor: FfiSecret?
+    @State private var showingExport = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,6 +42,14 @@ struct SecretListView: View {
             if let session = appState.session {
                 SecretEditorView(request: req, projectId: projectId, envId: envId,
                                  vm: vm, session: session, onSaved: onChanged)
+            }
+        }
+        .sheet(isPresented: $showingExport) {
+            if let session = appState.session {
+                ExportSheet(projectId: projectId, projectName: projectName.isEmpty ? envName : projectName,
+                            envId: envId, envName: envName, secrets: vm.secrets, session: session) { file in
+                    showBanner("Exported to \(file)")
+                }
             }
         }
         .sheet(item: $historyFor) { s in
@@ -92,13 +103,15 @@ struct SecretListView: View {
                     Button { showingImport = true } label: {
                         Label("Import", systemImage: "square.and.arrow.down")
                     }
-                    .help("Import a .env or JSON file")
+                    .help("Import a .env or JSON file (⌘I)")
+                    .keyboardShortcut("i", modifiers: [.command])
                 }
-                Button(action: export) {
+                Button { showingExport = true } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .disabled(vm.secrets.isEmpty)
-                .help("Save this environment as a .env file")
+                .help("Export as .env, JSON, Docker Compose, Kubernetes or .env.example (⌘E)")
+                .keyboardShortcut("e", modifiers: [.command])
                 if !readOnly {
                     Button { editor = EditorRequest(secret: nil) } label: {
                         Label("Add Variable", systemImage: "plus")
@@ -109,8 +122,13 @@ struct SecretListView: View {
             }
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search variables", text: $vm.searchText)
+                TextField("Search variables  ⌘F", text: $vm.searchText)
                     .textFieldStyle(.plain)
+                    .focused($searchFocused)
+                Button("") { searchFocused = true }
+                    .keyboardShortcut("f", modifiers: [.command])
+                    .opacity(0)
+                    .frame(width: 0)
                 if !vm.searchText.isEmpty {
                     Button { vm.searchText = "" } label: {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
@@ -167,6 +185,14 @@ struct SecretListView: View {
                         .help(s.isSecret ? "Secret" : "Plain variable")
                     Text(s.key)
                         .font(.system(.body, design: .monospaced))
+                    if let badge = expiryBadge(s) {
+                        Text(badge.text)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(badge.color.opacity(0.15), in: Capsule())
+                            .foregroundStyle(badge.color)
+                    }
                 }
             }
             .width(min: 140, ideal: 220)
@@ -247,6 +273,15 @@ struct SecretListView: View {
         }
     }
 
+    private func expiryBadge(_ s: FfiSecret) -> (text: String, color: Color)? {
+        guard let exp = s.expiresAt else { return nil }
+        let days = Int((Double(exp) - Date().timeIntervalSince1970) / 86_400)
+        if exp <= Int64(Date().timeIntervalSince1970) { return ("Expired", .red) }
+        if days < 1 { return ("Expires today", .red) }
+        if days <= 14 { return ("Expires in \(days)d", .orange) }
+        return nil
+    }
+
     // MARK: Actions
 
     private func secret(_ id: String) -> FfiSecret? {
@@ -305,22 +340,6 @@ struct SecretListView: View {
         selection.subtract(pendingDelete.map(\.id))
         pendingDelete = []
         onChanged()
-    }
-
-    private func export() {
-        guard let session = appState.session else { return }
-        do {
-            let exported = try session.exportEnv(projectId: projectId, envId: envId)
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = ".env.\(envName)"
-            panel.showsHiddenFiles = true
-            if panel.runModal() == .OK, let url = panel.url {
-                try exported.write(to: url, atomically: true, encoding: .utf8)
-                showBanner("Exported \(vm.secrets.count) variables to \(url.lastPathComponent)")
-            }
-        } catch {
-            vm.errorMessage = userMessage(error)
-        }
     }
 
     private func showBanner(_ text: String) {
