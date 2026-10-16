@@ -518,6 +518,8 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func cloneEnvironment(envId: String, newName: String) throws  -> FfiEnvironment
     
+    func compareEnvironments(projectId: String, leftEnvId: String, rightEnvId: String) throws  -> [FfiDiffRow]
+    
     func createEnvironment(projectId: String, name: String) throws  -> FfiEnvironment
     
     /**
@@ -558,6 +560,11 @@ public protocol YasecretSessionProtocol : AnyObject {
      */
     func joinProject(link: String) throws  -> String
     
+    /**
+     * Recent activity, optionally limited to one project.
+     */
+    func listActivity(projectId: String?, limit: UInt32) throws  -> [FfiActivity]
+    
     func listEnvironments(projectId: String) throws  -> [FfiEnvironment]
     
     func listMembers(projectId: String) throws  -> [FfiMember]
@@ -566,13 +573,25 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func listSecrets(envId: String) throws  -> [FfiSecret]
     
+    /**
+     * Previous values of a variable, newest first.
+     */
+    func listVersions(projectId: String, secretId: String) throws  -> [FfiVersion]
+    
     func mcpSessionCount() throws  -> UInt32
     
     func previewImport(envId: String, content: String) throws  -> [FfiImportRow]
     
+    /**
+     * Call when the user explicitly reveals or copies a secret value.
+     */
+    func recordReveal(secretId: String) throws 
+    
     func renameEnvironment(envId: String, newName: String) throws 
     
     func renameProject(projectId: String, newName: String) throws 
+    
+    func restoreVersion(projectId: String, secretId: String, versionId: String) throws 
     
     /**
      * `level` is "editor", "viewer" or "removed".
@@ -677,6 +696,16 @@ open func cloneEnvironment(envId: String, newName: String)throws  -> FfiEnvironm
     uniffi_yasecret_ffi_fn_method_yasecretsession_clone_environment(self.uniffiClonePointer(),
         FfiConverterString.lower(envId),
         FfiConverterString.lower(newName),$0
+    )
+})
+}
+    
+open func compareEnvironments(projectId: String, leftEnvId: String, rightEnvId: String)throws  -> [FfiDiffRow] {
+    return try  FfiConverterSequenceTypeFfiDiffRow.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_compare_environments(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(leftEnvId),
+        FfiConverterString.lower(rightEnvId),$0
     )
 })
 }
@@ -815,6 +844,18 @@ open func joinProject(link: String)throws  -> String {
 })
 }
     
+    /**
+     * Recent activity, optionally limited to one project.
+     */
+open func listActivity(projectId: String?, limit: UInt32)throws  -> [FfiActivity] {
+    return try  FfiConverterSequenceTypeFfiActivity.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_list_activity(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(projectId),
+        FfiConverterUInt32.lower(limit),$0
+    )
+})
+}
+    
 open func listEnvironments(projectId: String)throws  -> [FfiEnvironment] {
     return try  FfiConverterSequenceTypeFfiEnvironment.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_list_environments(self.uniffiClonePointer(),
@@ -846,6 +887,18 @@ open func listSecrets(envId: String)throws  -> [FfiSecret] {
 })
 }
     
+    /**
+     * Previous values of a variable, newest first.
+     */
+open func listVersions(projectId: String, secretId: String)throws  -> [FfiVersion] {
+    return try  FfiConverterSequenceTypeFfiVersion.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_list_versions(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(secretId),$0
+    )
+})
+}
+    
 open func mcpSessionCount()throws  -> UInt32 {
     return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_mcp_session_count(self.uniffiClonePointer(),$0
@@ -862,6 +915,16 @@ open func previewImport(envId: String, content: String)throws  -> [FfiImportRow]
 })
 }
     
+    /**
+     * Call when the user explicitly reveals or copies a secret value.
+     */
+open func recordReveal(secretId: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_record_reveal(self.uniffiClonePointer(),
+        FfiConverterString.lower(secretId),$0
+    )
+}
+}
+    
 open func renameEnvironment(envId: String, newName: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_rename_environment(self.uniffiClonePointer(),
         FfiConverterString.lower(envId),
@@ -874,6 +937,15 @@ open func renameProject(projectId: String, newName: String)throws  {try rustCall
     uniffi_yasecret_ffi_fn_method_yasecretsession_rename_project(self.uniffiClonePointer(),
         FfiConverterString.lower(projectId),
         FfiConverterString.lower(newName),$0
+    )
+}
+}
+    
+open func restoreVersion(projectId: String, secretId: String, versionId: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_restore_version(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(secretId),
+        FfiConverterString.lower(versionId),$0
     )
 }
 }
@@ -995,6 +1067,208 @@ public func FfiConverterTypeYasecretSession_lift(_ pointer: UnsafeMutableRawPoin
 #endif
 public func FfiConverterTypeYasecretSession_lower(_ value: YasecretSession) -> UnsafeMutableRawPointer {
     return FfiConverterTypeYasecretSession.lower(value)
+}
+
+
+public struct FfiActivity {
+    public var id: String
+    public var timestamp: Int64
+    public var action: String
+    public var targetLabel: String
+    public var byMe: Bool
+    public var fromSync: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, timestamp: Int64, action: String, targetLabel: String, byMe: Bool, fromSync: Bool) {
+        self.id = id
+        self.timestamp = timestamp
+        self.action = action
+        self.targetLabel = targetLabel
+        self.byMe = byMe
+        self.fromSync = fromSync
+    }
+}
+
+
+
+extension FfiActivity: Equatable, Hashable {
+    public static func ==(lhs: FfiActivity, rhs: FfiActivity) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.timestamp != rhs.timestamp {
+            return false
+        }
+        if lhs.action != rhs.action {
+            return false
+        }
+        if lhs.targetLabel != rhs.targetLabel {
+            return false
+        }
+        if lhs.byMe != rhs.byMe {
+            return false
+        }
+        if lhs.fromSync != rhs.fromSync {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(timestamp)
+        hasher.combine(action)
+        hasher.combine(targetLabel)
+        hasher.combine(byMe)
+        hasher.combine(fromSync)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiActivity: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiActivity {
+        return
+            try FfiActivity(
+                id: FfiConverterString.read(from: &buf), 
+                timestamp: FfiConverterInt64.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf), 
+                targetLabel: FfiConverterString.read(from: &buf), 
+                byMe: FfiConverterBool.read(from: &buf), 
+                fromSync: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiActivity, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterInt64.write(value.timestamp, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+        FfiConverterString.write(value.targetLabel, into: &buf)
+        FfiConverterBool.write(value.byMe, into: &buf)
+        FfiConverterBool.write(value.fromSync, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiActivity_lift(_ buf: RustBuffer) throws -> FfiActivity {
+    return try FfiConverterTypeFfiActivity.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiActivity_lower(_ value: FfiActivity) -> RustBuffer {
+    return FfiConverterTypeFfiActivity.lower(value)
+}
+
+
+public struct FfiDiffRow {
+    public var key: String
+    /**
+     * "same", "different", "only_left" or "only_right"
+     */
+    public var status: String
+    public var leftValue: String?
+    public var rightValue: String?
+    public var leftIsSecret: Bool
+    public var rightIsSecret: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, 
+        /**
+         * "same", "different", "only_left" or "only_right"
+         */status: String, leftValue: String?, rightValue: String?, leftIsSecret: Bool, rightIsSecret: Bool) {
+        self.key = key
+        self.status = status
+        self.leftValue = leftValue
+        self.rightValue = rightValue
+        self.leftIsSecret = leftIsSecret
+        self.rightIsSecret = rightIsSecret
+    }
+}
+
+
+
+extension FfiDiffRow: Equatable, Hashable {
+    public static func ==(lhs: FfiDiffRow, rhs: FfiDiffRow) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.leftValue != rhs.leftValue {
+            return false
+        }
+        if lhs.rightValue != rhs.rightValue {
+            return false
+        }
+        if lhs.leftIsSecret != rhs.leftIsSecret {
+            return false
+        }
+        if lhs.rightIsSecret != rhs.rightIsSecret {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(status)
+        hasher.combine(leftValue)
+        hasher.combine(rightValue)
+        hasher.combine(leftIsSecret)
+        hasher.combine(rightIsSecret)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiDiffRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiDiffRow {
+        return
+            try FfiDiffRow(
+                key: FfiConverterString.read(from: &buf), 
+                status: FfiConverterString.read(from: &buf), 
+                leftValue: FfiConverterOptionString.read(from: &buf), 
+                rightValue: FfiConverterOptionString.read(from: &buf), 
+                leftIsSecret: FfiConverterBool.read(from: &buf), 
+                rightIsSecret: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiDiffRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.leftValue, into: &buf)
+        FfiConverterOptionString.write(value.rightValue, into: &buf)
+        FfiConverterBool.write(value.leftIsSecret, into: &buf)
+        FfiConverterBool.write(value.rightIsSecret, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiDiffRow_lift(_ buf: RustBuffer) throws -> FfiDiffRow {
+    return try FfiConverterTypeFfiDiffRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiDiffRow_lower(_ value: FfiDiffRow) -> RustBuffer {
+    return FfiConverterTypeFfiDiffRow.lower(value)
 }
 
 
@@ -1670,6 +1944,96 @@ public func FfiConverterTypeFfiSyncStatus_lower(_ value: FfiSyncStatus) -> RustB
 }
 
 
+public struct FfiVersion {
+    public var id: String
+    public var value: String
+    public var changedAt: Int64
+    public var byMe: Bool
+    public var note: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, value: String, changedAt: Int64, byMe: Bool, note: String?) {
+        self.id = id
+        self.value = value
+        self.changedAt = changedAt
+        self.byMe = byMe
+        self.note = note
+    }
+}
+
+
+
+extension FfiVersion: Equatable, Hashable {
+    public static func ==(lhs: FfiVersion, rhs: FfiVersion) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.changedAt != rhs.changedAt {
+            return false
+        }
+        if lhs.byMe != rhs.byMe {
+            return false
+        }
+        if lhs.note != rhs.note {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(value)
+        hasher.combine(changedAt)
+        hasher.combine(byMe)
+        hasher.combine(note)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiVersion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiVersion {
+        return
+            try FfiVersion(
+                id: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf), 
+                changedAt: FfiConverterInt64.read(from: &buf), 
+                byMe: FfiConverterBool.read(from: &buf), 
+                note: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiVersion, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+        FfiConverterInt64.write(value.changedAt, into: &buf)
+        FfiConverterBool.write(value.byMe, into: &buf)
+        FfiConverterOptionString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiVersion_lift(_ buf: RustBuffer) throws -> FfiVersion {
+    return try FfiConverterTypeFfiVersion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiVersion_lower(_ value: FfiVersion) -> RustBuffer {
+    return FfiConverterTypeFfiVersion.lower(value)
+}
+
+
 public enum FfiError {
 
     
@@ -1857,6 +2221,56 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiActivity: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiActivity]
+
+    public static func write(_ value: [FfiActivity], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiActivity.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiActivity] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiActivity]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiActivity.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiDiffRow: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiDiffRow]
+
+    public static func write(_ value: [FfiDiffRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiDiffRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiDiffRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiDiffRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiDiffRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiEnvironment: FfiConverterRustBuffer {
     typealias SwiftType = [FfiEnvironment]
 
@@ -2003,6 +2417,31 @@ fileprivate struct FfiConverterSequenceTypeFfiSecret: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiVersion: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiVersion]
+
+    public static func write(_ value: [FfiVersion], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiVersion.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiVersion] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiVersion]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiVersion.read(from: &buf))
+        }
+        return seq
+    }
+}
 public func defaultDbPath() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_yasecret_ffi_fn_func_default_db_path($0
@@ -2054,6 +2493,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_clone_environment() != 3605) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_compare_environments() != 58187) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_environment() != 62234) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2096,6 +2538,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_join_project() != 47662) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_activity() != 9481) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_environments() != 36554) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2108,16 +2553,25 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_secrets() != 54880) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_versions() != 51187) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_mcp_session_count() != 20964) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_preview_import() != 8892) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_record_reveal() != 40514) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_environment() != 57662) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_project() != 18318) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_restore_version() != 50406) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 59959) {

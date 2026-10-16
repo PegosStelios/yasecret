@@ -31,6 +31,8 @@ use zeroize::Zeroizing;
 use crate::{node::SyncNode, Result, SyncError};
 
 pub const INVITE_TTL_SECS: i64 = 24 * 3600;
+/// Audit actor for changes that arrived from another device.
+pub const SYNC_ACTOR: &str = "sync";
 const JOIN_TIMEOUT: Duration = Duration::from_secs(45);
 const RECONCILE_EVERY: Duration = Duration::from_secs(20);
 
@@ -1141,6 +1143,7 @@ fn apply_remote_secret(db: &Db, r: &WSecret, local: Option<&yasecret_core::model
             "UPDATE secret SET key=?1, encrypted_value=?2, nonce=?3, is_secret=?4, updated_at=?5, expires_at=?6 WHERE id=?7",
             rusqlite::params![&r.key, &r.enc, &r.nonce, r.is_secret, r.updated_at, r.expires_at, &r.id],
         )?;
+        yasecret_core::audit::append(db, SYNC_ACTOR, "synced_secret", "secret", &r.id, Some(&r.key))?;
         return Ok(true);
     }
     // Two people created the same name independently: the newer one wins.
@@ -1162,6 +1165,7 @@ fn apply_remote_secret(db: &Db, r: &WSecret, local: Option<&yasecret_core::model
         "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         rusqlite::params![&r.id, &r.env_id, &r.key, &r.enc, &r.nonce, r.created_at, r.updated_at, &r.created_by, r.expires_at, r.is_secret],
     )?;
+    yasecret_core::audit::append(db, SYNC_ACTOR, "synced_secret", "secret", &r.id, Some(&r.key))?;
     Ok(true)
 }
 

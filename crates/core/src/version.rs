@@ -8,7 +8,7 @@ use crate::{
 
 pub fn list(db: &Db, secret_id: &str) -> Result<Vec<SecretVersion>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id,secret_id,encrypted_value,nonce,changed_by,changed_at,note FROM secret_version WHERE secret_id=?1 ORDER BY changed_at DESC",
+        "SELECT id,secret_id,encrypted_value,nonce,changed_by,changed_at,note FROM secret_version WHERE secret_id=?1 ORDER BY changed_at DESC, rowid DESC",
     )?;
     let rows = stmt.query_map([secret_id], |r| {
         Ok(SecretVersion {

@@ -116,6 +116,36 @@ pub struct FfiImportSummary {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone, uniffi::Record)]
+pub struct FfiVersion {
+    pub id: String,
+    pub value: String,
+    pub changed_at: i64,
+    pub by_me: bool,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct FfiActivity {
+    pub id: String,
+    pub timestamp: i64,
+    pub action: String,
+    pub target_label: String,
+    pub by_me: bool,
+    pub from_sync: bool,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct FfiDiffRow {
+    pub key: String,
+    /// "same", "different", "only_left" or "only_right"
+    pub status: String,
+    pub left_value: Option<String>,
+    pub right_value: Option<String>,
+    pub left_is_secret: bool,
+    pub right_is_secret: bool,
+}
+
+#[derive(Clone, uniffi::Record)]
 pub struct FfiMember {
     pub peer_id: String,
     pub name: String,
@@ -362,6 +392,124 @@ impl YasecretSession {
         let bytes = yasecret_core::secret::get_plaintext(&db, &secret_id, &proj_key)?;
         String::from_utf8(bytes.to_vec())
             .map_err(|e| FfiError::Parse { msg: e.to_string() })
+    }
+
+    // ── History, activity, compare ────────────────────────────────────────────
+
+    /// Previous values of a variable, newest first.
+    pub fn list_versions(&self, project_id: String, secret_id: String) -> Result<Vec<FfiVersion>, FfiError> {
+        let db = self.open()?;
+        let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
+        let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
+        yasecret_core::version::list(&db, &secret_id)?
+            .into_iter()
+            .map(|v| {
+                let nonce: [u8; 12] = v.nonce.clone().try_into().map_err(|_| FfiError::Crypto)?;
+                let plain = yasecret_core::crypto::decrypt(&v.encrypted_value, &nonce, &pk)?;
+                Ok(FfiVersion {
+                    id: v.id,
+                    value: String::from_utf8_lossy(&plain).into_owned(),
+                    changed_at: v.changed_at,
+                    by_me: v.changed_by == me,
+                    note: v.note,
+                })
+            })
+            .collect()
+    }
+
+    pub fn restore_version(&self, project_id: String, secret_id: String, version_id: String) -> Result<(), FfiError> {
+        let db = self.open()?;
+        let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
+        let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
+        yasecret_core::version::rollback(&db, &secret_id, &version_id, &pk, &me)?;
+        self.touched(&project_id);
+        Ok(())
+    }
+
+    /// Call when the user explicitly reveals or copies a secret value.
+    pub fn record_reveal(&self, secret_id: String) -> Result<(), FfiError> {
+        let db = self.open()?;
+        let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
+        yasecret_core::audit::append(&db, &me, "revealed_secret", "secret", &secret_id, None)?;
+        Ok(())
+    }
+
+    /// Recent activity, optionally limited to one project.
+    pub fn list_activity(&self, project_id: Option<String>, limit: u32) -> Result<Vec<FfiActivity>, FfiError> {
+        let db = self.open()?;
+        let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
+        let mut out = Vec::new();
+        for a in yasecret_core::audit::list(&db, (limit as i64) * 4)? {
+            let live: Option<(String, String, String)> = db.conn().query_row(
+                "SELECT s.key, e.name, e.project_id FROM secret s JOIN environment e ON e.id = s.env_id WHERE s.id = ?1",
+                [&a.target_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            ).ok();
+            let (label, pid) = match live {
+                Some((key, env, pid)) => (format!("{key} · {env}"), Some(pid)),
+                None => {
+                    let pid: Option<String> = db.conn()
+                        .query_row("SELECT project_id FROM tombstone WHERE id = ?1", [&a.target_id], |r| r.get(0))
+                        .ok();
+                    (a.detail.clone().unwrap_or_else(|| "a removed variable".into()), pid)
+                }
+            };
+            if let Some(want) = &project_id {
+                if pid.as_deref() != Some(want.as_str()) {
+                    continue;
+                }
+            }
+            out.push(FfiActivity {
+                id: a.id,
+                timestamp: a.timestamp,
+                action: a.action,
+                target_label: label,
+                by_me: a.peer_id == me,
+                from_sync: a.peer_id == yasecret_sync::live::SYNC_ACTOR,
+            });
+            if out.len() >= limit as usize {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn compare_environments(&self, project_id: String, left_env_id: String, right_env_id: String) -> Result<Vec<FfiDiffRow>, FfiError> {
+        let db = self.open()?;
+        let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
+        let load = |env: &str| -> Result<std::collections::BTreeMap<String, (String, bool)>, FfiError> {
+            yasecret_core::secret::list(&db, env)?
+                .into_iter()
+                .map(|s| {
+                    let v = yasecret_core::secret::get_plaintext(&db, &s.id, &pk)?;
+                    Ok((s.key, (String::from_utf8_lossy(&v).into_owned(), s.is_secret)))
+                })
+                .collect()
+        };
+        let left = load(&left_env_id)?;
+        let right = load(&right_env_id)?;
+        let keys: std::collections::BTreeSet<&String> = left.keys().chain(right.keys()).collect();
+        Ok(keys
+            .into_iter()
+            .map(|k| {
+                let l = left.get(k);
+                let r = right.get(k);
+                let status = match (l, r) {
+                    (Some(a), Some(b)) if a.0 == b.0 => "same",
+                    (Some(_), Some(_)) => "different",
+                    (Some(_), None) => "only_left",
+                    _ => "only_right",
+                };
+                FfiDiffRow {
+                    key: k.clone(),
+                    status: status.into(),
+                    left_value: l.map(|x| x.0.clone()),
+                    right_value: r.map(|x| x.0.clone()),
+                    left_is_secret: l.map(|x| x.1).unwrap_or(false),
+                    right_is_secret: r.map(|x| x.1).unwrap_or(false),
+                }
+            })
+            .collect())
     }
 
     // ── Import / Export ───────────────────────────────────────────────────────
@@ -875,6 +1023,54 @@ mod tests {
         assert!(!session.sync_status(p).unwrap().shared);
         session.stop_sync();
         session.start_sync("test-mac".into()).unwrap();
+    }
+
+    #[test]
+    fn history_lists_old_values_and_restores() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        let s = session.create_secret(p.clone(), e, "K".into(), "v1".into(), None, true).unwrap();
+        session.edit_secret(p.clone(), s.id.clone(), None, Some("v2".into()), None).unwrap();
+        session.edit_secret(p.clone(), s.id.clone(), None, Some("v3".into()), None).unwrap();
+        let versions = session.list_versions(p.clone(), s.id.clone()).unwrap();
+        assert_eq!(versions.iter().map(|v| v.value.as_str()).collect::<Vec<_>>(), vec!["v2", "v1"]);
+        let v1 = versions.iter().find(|v| v.value == "v1").unwrap();
+        session.restore_version(p.clone(), s.id.clone(), v1.id.clone()).unwrap();
+        assert_eq!(session.get_secret_plaintext(p.clone(), s.id.clone()).unwrap(), "v1");
+        assert_eq!(session.list_versions(p, s.id).unwrap()[0].value, "v3");
+    }
+
+    #[test]
+    fn activity_names_variables_and_records_reveals() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        let s = session.create_secret(p.clone(), e, "STRIPE_KEY".into(), "x".into(), None, true).unwrap();
+        session.record_reveal(s.id.clone()).unwrap();
+        let log = session.list_activity(Some(p.clone()), 50).unwrap();
+        assert!(log.iter().any(|a| a.action == "revealed_secret" && a.target_label == "STRIPE_KEY · dev"));
+        assert!(log.iter().any(|a| a.action == "created_secret" && a.by_me));
+        assert!(session.list_activity(Some("other".into()), 50).unwrap().is_empty());
+    }
+
+    #[test]
+    fn compare_environments_classifies_keys() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, dev) = proj_env(&session);
+        let prod = session.create_environment(p.clone(), "prod".into()).unwrap().id;
+        for (env, k, v) in [(&dev, "SAME", "1"), (&prod, "SAME", "1"), (&dev, "DIFF", "a"), (&prod, "DIFF", "b"), (&dev, "ONLY_DEV", "x"), (&prod, "ONLY_PROD", "y")] {
+            session.create_secret(p.clone(), env.clone(), k.into(), v.into(), None, true).unwrap();
+        }
+        let rows = session.compare_environments(p, dev, prod).unwrap();
+        let status = |k: &str| rows.iter().find(|r| r.key == k).unwrap().status.clone();
+        assert_eq!(status("SAME"), "same");
+        assert_eq!(status("DIFF"), "different");
+        assert_eq!(status("ONLY_DEV"), "only_left");
+        assert_eq!(status("ONLY_PROD"), "only_right");
+        let diff = rows.iter().find(|r| r.key == "DIFF").unwrap();
+        assert_eq!((diff.left_value.as_deref(), diff.right_value.as_deref()), (Some("a"), Some("b")));
     }
 
     #[test]

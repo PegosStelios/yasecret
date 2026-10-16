@@ -18,6 +18,7 @@ struct SecretListView: View {
     @State private var pendingDelete: [FfiSecret] = []
     @State private var copiedId: String?
     @State private var banner: String?
+    @State private var historyFor: FfiSecret?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,6 +39,14 @@ struct SecretListView: View {
             if let session = appState.session {
                 SecretEditorView(request: req, projectId: projectId, envId: envId,
                                  vm: vm, session: session, onSaved: onChanged)
+            }
+        }
+        .sheet(item: $historyFor) { s in
+            if let session = appState.session {
+                HistorySheet(secret: s, projectId: projectId, session: session, readOnly: readOnly) {
+                    vm.load(envId: envId, session: session)
+                    revealed[s.id] = nil
+                }
             }
         }
         .sheet(isPresented: $showingImport) {
@@ -222,6 +231,7 @@ struct SecretListView: View {
             if !readOnly { Button("Edit…") { editor = EditorRequest(secret: s) } }
             Button("Copy Value") { copyValue(s) }
             Button("Copy Key") { Clipboard.copy(s.key, sensitive: false) }
+            Button("History…") { historyFor = s }
             if s.isSecret {
                 Button(revealed[s.id] == nil ? "Reveal Value" : "Hide Value") { toggleReveal(s) }
             }
@@ -267,12 +277,14 @@ struct SecretListView: View {
             revealed[s.id] = nil
         } else if let v = plaintext(s) {
             revealed[s.id] = v
+            try? appState.session?.recordReveal(secretId: s.id)
         }
     }
 
     private func copyValue(_ s: FfiSecret) {
         guard let v = revealed[s.id] ?? plainValues[s.id] ?? plaintext(s) else { return }
         Clipboard.copy(v, sensitive: s.isSecret)
+        if s.isSecret { try? appState.session?.recordReveal(secretId: s.id) }
         copiedId = s.id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             if copiedId == s.id { copiedId = nil }

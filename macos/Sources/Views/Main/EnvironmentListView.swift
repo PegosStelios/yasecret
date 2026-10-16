@@ -14,6 +14,8 @@ struct EnvironmentListView: View {
     @State private var renamingId: String?
     @State private var renameText = ""
     @State private var pendingDelete: FfiEnvironment?
+    @State private var comparing: ComparePair?
+    @State private var showingActivity = false
 
     var body: some View {
         List(selection: $vm.selectedEnvId) {
@@ -61,6 +63,11 @@ struct EnvironmentListView: View {
                         .help("New environment")
                     }
                     Spacer()
+                    Button { showingActivity = true } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Activity")
                     Button(action: onShare) {
                         Label(sharing.isShared ? "Sharing" : "Share", systemImage: "person.crop.circle.badge.plus")
                     }
@@ -82,6 +89,16 @@ struct EnvironmentListView: View {
                       footnote: "Copies all \(env.secretCount) variables, values included.") { name in
                 guard let session = appState.session else { return }
                 vm.cloneEnvironment(id: env.id, newName: name, session: session)
+            }
+        }
+        .sheet(item: $comparing) { pair in
+            if let session = appState.session {
+                CompareSheet(pair: pair, projectId: projectId, session: session)
+            }
+        }
+        .sheet(isPresented: $showingActivity) {
+            if let session = appState.session {
+                ActivitySheet(projectId: projectId, projectName: projectName, session: session)
             }
         }
         .confirmationDialog(
@@ -117,6 +134,14 @@ struct EnvironmentListView: View {
                     .foregroundStyle(.secondary)
             }
             .contextMenu {
+                let others = vm.environments.filter { $0.id != env.id }
+                if !others.isEmpty {
+                    Menu("Compare With") {
+                        ForEach(others) { other in
+                            Button(other.name) { comparing = ComparePair(left: env, right: other) }
+                        }
+                    }
+                }
                 if !readOnly {
                     Button("Rename…") {
                         renamingId = env.id
