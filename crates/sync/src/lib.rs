@@ -1,8 +1,5 @@
-pub mod applier;
-pub mod doc_manager;
+pub mod live;
 pub mod node;
-pub mod peer_key;
-pub mod types;
 
 use thiserror::Error;
 
@@ -24,6 +21,20 @@ pub enum SyncError {
     Io(#[from] std::io::Error),
     #[error("db: {0}")]
     Db(#[from] rusqlite::Error),
+    #[error("This invite link can't be used: {0}")]
+    InvalidLink(String),
+    #[error("That device code isn't valid — it should be 64 characters (letters a–f and digits)")]
+    InvalidDeviceCode,
+    #[error("Only the project owner can do that")]
+    NotOwner,
+    #[error("You already have this project")]
+    AlreadyJoined,
+    #[error("Couldn't reach the person who shared this. They need Yasecret open and unlocked; try again in a moment")]
+    OwnerOffline,
+    #[error("This invite link was already used. Ask for a new one")]
+    InviteUsed,
+    #[error("This invite link has expired. Ask for a new one")]
+    InviteExpired,
 }
 
 pub type Result<T> = std::result::Result<T, SyncError>;

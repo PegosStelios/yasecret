@@ -1,13 +1,11 @@
 use clap::Args;
-use sha2::{Digest, Sha256};
-use yasecret_sync::{doc_manager, node::SyncNode};
+use yasecret_core::YasecretError;
 
 #[derive(Args)]
 pub struct JoinArgs {
-    #[arg(long)]
-    pub ticket: String,
-    #[arg(short, long)]
-    pub project: String,
+    /// The yasecret://join link you were sent
+    #[arg(alias = "ticket")]
+    pub link: String,
     #[arg(long, hide = true)]
     pub db: Option<String>,
     #[arg(long, hide = true)]
@@ -15,28 +13,19 @@ pub struct JoinArgs {
 }
 
 pub async fn run(args: JoinArgs) -> yasecret_core::Result<()> {
-    let path = crate::unlock::db_path(args.db.as_deref());
-    let session = crate::unlock::unlock(&path, args.password.as_deref())?;
-
-    let data_dir = path.parent().unwrap_or_else(|| std::path::Path::new(".")).join("sync");
-    let sync_key: [u8; 32] = {
-        let mut h = Sha256::new();
-        h.update(b"yasecret-sync-key-v1");
-        h.update(&session.identity.secret_key);
-        h.finalize().into()
-    };
-    let node = SyncNode::start(&data_dir, &sync_key)
-        .await
-        .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;
-
-    let doc_id = doc_manager::join_project_doc(&session.db, &node, &args.ticket, &args.project)
-        .await
-        .map_err(|e| yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))?;
-
-    // Brief wait for initial sync to deliver content.
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-    println!("joined doc: {doc_id}. Run `yasecret pull` once sync settles.");
-    node.stop().await;
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        let path = crate::unlock::db_path(args.db.as_deref());
+        let session = crate::unlock::unlock(&path, args.password.as_deref())?;
+        let svc = super::share::start(&path, &session)?;
+        eprintln!("Connecting to the person who shared this…");
+        let project_id = svc.join(&args.link).map_err(super::share::sync_err)?;
+        // Give the first sync pass a moment to land variables locally.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        let name = yasecret_core::project::get(&session.db, &project_id)?.name;
+        println!("Joined '{name}'. Run `yasecret pull` to write a .env.");
+        svc.shutdown();
+        Ok(())
+    })
+    .await
+    .map_err(|e| YasecretError::Io(std::io::Error::other(e.to_string())))?
 }

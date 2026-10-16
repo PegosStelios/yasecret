@@ -58,6 +58,7 @@ fn share_prints_nonempty_ticket() {
             "share",
             "--project", "shared-app",
             "--peer-key", &fake_peer_key,
+            "--no-wait",
             "--db", db_path.to_str().unwrap(),
             "--password", "testpw",
         ])
@@ -70,6 +71,6 @@ fn share_prints_nonempty_ticket() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    assert!(!stdout.is_empty(), "ticket must be non-empty");
-    assert!(stdout.len() > 20, "ticket looks too short: {stdout}");
+    assert!(stdout.starts_with("yasecret://join?"), "expected an invite link, got: {stdout}");
+    assert!(stdout.contains("m=device"), "peer key makes a device-bound invite: {stdout}");
 }

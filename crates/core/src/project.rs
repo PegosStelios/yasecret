@@ -11,10 +11,11 @@ pub fn create(db: &Db, name: &str, description: Option<&str>, owner_id: &str) ->
         description: description.map(String::from),
         created_at: now(),
         owner_id: owner_id.to_string(),
+        updated_at: now(),
     };
     db.conn().execute(
-        "INSERT INTO project (id, name, description, created_at, owner_id) VALUES (?1,?2,?3,?4,?5)",
-        rusqlite::params![&p.id, &p.name, &p.description, p.created_at, &p.owner_id],
+        "INSERT INTO project (id, name, description, created_at, owner_id, updated_at) VALUES (?1,?2,?3,?4,?5,?6)",
+        rusqlite::params![&p.id, &p.name, &p.description, p.created_at, &p.owner_id, p.updated_at],
     )?;
     Ok(p)
 }
@@ -22,7 +23,7 @@ pub fn create(db: &Db, name: &str, description: Option<&str>, owner_id: &str) ->
 pub fn get(db: &Db, id: &str) -> Result<Project> {
     db.conn()
         .query_row(
-            "SELECT id, name, description, created_at, owner_id FROM project WHERE id = ?1",
+            "SELECT id, name, description, created_at, owner_id, updated_at FROM project WHERE id = ?1",
             [id],
             |r| {
                 Ok(Project {
@@ -31,6 +32,7 @@ pub fn get(db: &Db, id: &str) -> Result<Project> {
                     description: r.get(2)?,
                     created_at: r.get(3)?,
                     owner_id: r.get(4)?,
+                    updated_at: r.get(5)?,
                 })
             },
         )
@@ -39,7 +41,7 @@ pub fn get(db: &Db, id: &str) -> Result<Project> {
 
 pub fn list(db: &Db) -> Result<Vec<Project>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id, name, description, created_at, owner_id FROM project ORDER BY created_at",
+        "SELECT id, name, description, created_at, owner_id, updated_at FROM project ORDER BY created_at",
     )?;
     let rows = stmt.query_map([], |r| {
         Ok(Project {
@@ -48,6 +50,7 @@ pub fn list(db: &Db) -> Result<Vec<Project>> {
             description: r.get(2)?,
             created_at: r.get(3)?,
             owner_id: r.get(4)?,
+            updated_at: r.get(5)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -55,8 +58,8 @@ pub fn list(db: &Db) -> Result<Vec<Project>> {
 
 pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE project SET name = ?1 WHERE id = ?2",
-        rusqlite::params![new_name, id],
+        "UPDATE project SET name = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![new_name, now(), id],
     )?;
     if n == 0 { return Err(YasecretError::NotFound(format!("project {id}"))); }
     Ok(())

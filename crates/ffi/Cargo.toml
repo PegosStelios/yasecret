@@ -9,6 +9,8 @@ name       = "yasecret_ffi"
 
 [dependencies]
 yasecret-core = { path = "../core" }
+yasecret-sync = { path = "../sync" }
+hex           = { workspace = true }
 uniffi        = { workspace = true }
 zeroize       = { workspace = true }
 dirs          = { workspace = true }

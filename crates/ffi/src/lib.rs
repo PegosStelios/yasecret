@@ -22,6 +22,17 @@ pub enum FfiError {
     Db { msg: String },
     #[error("Parse: {msg}")]
     Parse { msg: String },
+    #[error("{msg}")]
+    Sync { msg: String },
+}
+
+impl From<yasecret_sync::SyncError> for FfiError {
+    fn from(e: yasecret_sync::SyncError) -> Self {
+        match e {
+            yasecret_sync::SyncError::Core(c) => FfiError::from(c),
+            other => FfiError::Sync { msg: other.to_string() },
+        }
+    }
 }
 
 impl From<yasecret_core::error::YasecretError> for FfiError {
@@ -104,11 +115,31 @@ pub struct FfiImportSummary {
 
 // ── Session ───────────────────────────────────────────────────────────────────
 
+#[derive(Clone, uniffi::Record)]
+pub struct FfiMember {
+    pub peer_id: String,
+    pub name: String,
+    pub level: String,
+    pub joined_at: i64,
+    pub is_me: bool,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct FfiSyncStatus {
+    pub shared: bool,
+    pub is_owner: bool,
+    pub my_level: String,
+    pub peers_online: u32,
+    pub last_synced_at: Option<i64>,
+    pub last_error: Option<String>,
+}
+
 #[derive(uniffi::Object)]
 pub struct YasecretSession {
     db_path: String,
     password: String,
     db_key: Zeroizing<[u8; 32]>,
+    sync: std::sync::Mutex<Option<Arc<yasecret_sync::live::SyncService>>>,
 }
 
 #[uniffi::export]
@@ -139,7 +170,7 @@ impl YasecretSession {
         // Verify password — Db::open returns WrongPassword on bad SQLCipher key
         Db::open(path, &password).map_err(FfiError::from)?;
 
-        Ok(Arc::new(Self { db_path, password, db_key }))
+        Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None) }))
     }
 
     // ── Projects ──────────────────────────────────────────────────────────────
@@ -162,10 +193,15 @@ impl YasecretSession {
 
     pub fn rename_project(&self, project_id: String, new_name: String) -> Result<(), FfiError> {
         let db = self.open()?;
-        Ok(yasecret_core::project::rename(&db, &project_id, &new_name)?)
+        yasecret_core::project::rename(&db, &project_id, &new_name)?;
+        self.touched(&project_id);
+        Ok(())
     }
 
     pub fn delete_project(&self, project_id: String) -> Result<(), FfiError> {
+        if let Some(svc) = self.sync_service() {
+            svc.stop_sharing(&project_id)?;
+        }
         let db = self.open()?;
         Ok(yasecret_core::project::delete(&db, &project_id)?)
     }
@@ -183,6 +219,7 @@ impl YasecretSession {
     pub fn create_environment(&self, project_id: String, name: String) -> Result<FfiEnvironment, FfiError> {
         let db = self.open()?;
         let e = yasecret_core::environment::create(&db, &project_id, &name)?;
+        self.touched(&project_id);
         env_record(&db, e)
     }
 
@@ -192,17 +229,24 @@ impl YasecretSession {
         let result = yasecret_core::environment::clone(&db, &env_id, &new_name)
             .map_err(FfiError::from)
             .and_then(|e| env_record(&db, e));
-        finish_tx(&db, result)
+        let result = finish_tx(&db, result)?;
+        self.touched(&result.project_id);
+        Ok(result)
     }
 
     pub fn rename_environment(&self, env_id: String, new_name: String) -> Result<(), FfiError> {
         let db = self.open()?;
-        Ok(yasecret_core::environment::rename(&db, &env_id, &new_name)?)
+        yasecret_core::environment::rename(&db, &env_id, &new_name)?;
+        self.touched_env(&db, &env_id);
+        Ok(())
     }
 
     pub fn delete_environment(&self, env_id: String) -> Result<(), FfiError> {
         let db = self.open()?;
-        Ok(yasecret_core::environment::delete(&db, &env_id)?)
+        let project_id = yasecret_core::environment::get(&db, &env_id)?.project_id;
+        yasecret_core::environment::delete(&db, &env_id)?;
+        self.touched(&project_id);
+        Ok(())
     }
 
     // ── Secrets ───────────────────────────────────────────────────────────────
@@ -238,7 +282,9 @@ impl YasecretSession {
             }
             Ok(FfiSecret { is_secret, ..FfiSecret::from(s) })
         })();
-        finish_tx(&db, result)
+        let r = finish_tx(&db, result)?;
+        self.touched(&project_id);
+        Ok(r)
     }
 
     /// Changes any combination of key, value and kind in one transaction.
@@ -272,7 +318,9 @@ impl YasecretSession {
             }
             Ok(())
         })();
-        finish_tx(&db, result)
+        let r = finish_tx(&db, result)?;
+        self.touched(&project_id);
+        Ok(r)
     }
 
     pub fn update_secret(
@@ -285,13 +333,23 @@ impl YasecretSession {
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
         yasecret_core::secret::update(&db, &secret_id, new_value.as_bytes(), &proj_key, &id, None)?;
+        self.touched(&project_id);
         Ok(())
     }
 
     pub fn delete_secret(&self, secret_id: String) -> Result<(), FfiError> {
         let db = self.open()?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
-        Ok(yasecret_core::secret::delete(&db, &secret_id, &id)?)
+        let project_id: Option<String> = db.conn().query_row(
+            "SELECT e.project_id FROM secret s JOIN environment e ON e.id = s.env_id WHERE s.id = ?1",
+            [&secret_id],
+            |r| r.get(0),
+        ).ok();
+        yasecret_core::secret::delete(&db, &secret_id, &id)?;
+        if let Some(pid) = project_id {
+            self.touched(&pid);
+        }
+        Ok(())
     }
 
     pub fn get_secret_plaintext(
@@ -334,6 +392,9 @@ impl YasecretSession {
             Ok(_) => db.conn().execute_batch("COMMIT")
                 .map_err(|e| FfiError::Db { msg: e.to_string() })?,
             Err(_) => { db.conn().execute_batch("ROLLBACK").ok(); }
+        }
+        if result.is_ok() {
+            self.touched(&project_id);
         }
         result
     }
@@ -396,7 +457,9 @@ impl YasecretSession {
             }
             Ok(summary)
         })();
-        finish_tx(&db, result)
+        let r = finish_tx(&db, result)?;
+        self.touched(&project_id);
+        Ok(r)
     }
 
     pub fn export_env(
@@ -413,6 +476,98 @@ impl YasecretSession {
             pairs.push((s.key.clone(), String::from_utf8_lossy(&val).into_owned()));
         }
         Ok(env_file::serialize(&pairs))
+    }
+
+    // ── Sharing / sync ────────────────────────────────────────────────────────
+
+    /// Starts the background sync node. Safe to call more than once.
+    pub fn start_sync(&self, device_name: String) -> Result<(), FfiError> {
+        let mut guard = self.sync.lock().unwrap();
+        if guard.is_some() {
+            return Ok(());
+        }
+        let data_dir = Path::new(&self.db_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("sync");
+        let svc = yasecret_sync::live::SyncService::start(yasecret_sync::live::SyncConfig {
+            db_path: self.db_path.clone().into(),
+            db_password: self.password.clone(),
+            db_key: *self.db_key,
+            data_dir,
+            device_name,
+        })?;
+        *guard = Some(Arc::new(svc));
+        Ok(())
+    }
+
+    pub fn stop_sync(&self) {
+        let svc = self.sync.lock().unwrap().take();
+        if let Some(svc) = svc {
+            svc.close();
+        }
+    }
+
+    /// This device's code for device-bound invites.
+    pub fn device_code(&self) -> Result<String, FfiError> {
+        let db = self.open()?;
+        let identity = yasecret_core::identity::load_or_create(&db, "local")?;
+        Ok(yasecret_sync::live::peer_id(&identity))
+    }
+
+    /// `level` is "editor" or "viewer". Pass `device_code` for a device-bound invite.
+    pub fn create_invite(&self, project_id: String, device_code: Option<String>, level: String) -> Result<String, FfiError> {
+        Ok(self.require_sync()?.create_invite(&project_id, device_code.as_deref(), &level)?)
+    }
+
+    /// Blocks up to ~45s while the owner's device answers. Returns the project id.
+    pub fn join_project(&self, link: String) -> Result<String, FfiError> {
+        Ok(self.require_sync()?.join(&link)?)
+    }
+
+    pub fn list_members(&self, project_id: String) -> Result<Vec<FfiMember>, FfiError> {
+        let Some(svc) = self.sync_service() else { return Ok(vec![]) };
+        Ok(svc
+            .members(&project_id)?
+            .into_iter()
+            .map(|m| FfiMember { peer_id: m.peer_id, name: m.name, level: m.level, joined_at: m.joined_at, is_me: m.is_me })
+            .collect())
+    }
+
+    /// `level` is "editor", "viewer" or "removed".
+    pub fn set_member_level(&self, project_id: String, peer_id: String, level: String) -> Result<(), FfiError> {
+        Ok(self.require_sync()?.set_member_level(&project_id, &peer_id, &level)?)
+    }
+
+    pub fn sync_status(&self, project_id: String) -> Result<FfiSyncStatus, FfiError> {
+        let shared = {
+            let db = self.open()?;
+            db.conn().query_row("SELECT count(*) FROM sync_doc WHERE project_id = ?1", [&project_id], |r| r.get::<_, i64>(0))
+                .map_err(db_err)? > 0
+        };
+        let st = match (shared, self.sync_service()) {
+            (true, Some(svc)) => svc.status(&project_id)?,
+            (true, None) => yasecret_sync::live::SyncStatus { shared: true, ..Default::default() },
+            _ => yasecret_sync::live::SyncStatus::default(),
+        };
+        Ok(FfiSyncStatus {
+            shared: st.shared,
+            is_owner: st.is_owner,
+            my_level: st.my_level,
+            peers_online: st.peers_online,
+            last_synced_at: st.last_synced_at,
+            last_error: st.last_error,
+        })
+    }
+
+    /// Changes whenever synced data from other devices landed in the vault.
+    pub fn sync_revision(&self) -> u64 {
+        self.sync_service().map(|s| s.revision()).unwrap_or(0)
+    }
+
+    /// Owner: stop sharing and rotate the key. Member: leave and remove the local copy.
+    pub fn stop_sharing(&self, project_id: String) -> Result<(), FfiError> {
+        Ok(self.require_sync()?.stop_sharing(&project_id)?)
     }
 
     // ── MCP session ───────────────────────────────────────────────────────────
@@ -517,6 +672,33 @@ fn env_record(db: &Db, e: yasecret_core::models::Environment) -> Result<FfiEnvir
 impl YasecretSession {
     fn open(&self) -> Result<Db, FfiError> {
         Ok(Db::open(Path::new(&self.db_path), &self.password)?)
+    }
+
+    fn sync_service(&self) -> Option<Arc<yasecret_sync::live::SyncService>> {
+        self.sync.lock().unwrap().clone()
+    }
+
+    fn require_sync(&self) -> Result<Arc<yasecret_sync::live::SyncService>, FfiError> {
+        self.sync_service()
+            .ok_or_else(|| FfiError::Sync { msg: "Sharing isn't running — unlock the vault and try again".into() })
+    }
+
+    fn touched(&self, project_id: &str) {
+        if let Some(svc) = self.sync_service() {
+            svc.notify_local_change(project_id);
+        }
+    }
+
+    fn touched_env(&self, db: &Db, env_id: &str) {
+        if let Ok(e) = yasecret_core::environment::get(db, env_id) {
+            self.touched(&e.project_id);
+        }
+    }
+}
+
+impl Drop for YasecretSession {
+    fn drop(&mut self) {
+        self.stop_sync();
     }
 }
 
@@ -669,6 +851,30 @@ mod tests {
         let over = session.apply_import(p.clone(), e.clone(), items, true).unwrap();
         assert_eq!((over.added, over.updated, over.skipped), (0, 2, 0));
         assert_eq!(session.get_secret_plaintext(p, port_id).unwrap(), "2");
+    }
+
+    #[test]
+    fn sync_lifecycle_and_invite() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        session.create_secret(p.clone(), e, "A".into(), "1".into(), None, true).unwrap();
+        assert!(!session.sync_status(p.clone()).unwrap().shared);
+        assert!(session.create_invite(p.clone(), None, "editor".into()).is_err(), "needs sync running");
+
+        session.start_sync("test-mac".into()).unwrap();
+        assert_eq!(session.device_code().unwrap().len(), 64);
+        let link = session.create_invite(p.clone(), None, "editor".into()).unwrap();
+        assert!(link.starts_with("yasecret://join?"));
+        let st = session.sync_status(p.clone()).unwrap();
+        assert!(st.shared && st.is_owner);
+        assert_eq!(st.my_level, "owner");
+        assert_eq!(session.list_members(p.clone()).unwrap().len(), 1);
+
+        session.stop_sharing(p.clone()).unwrap();
+        assert!(!session.sync_status(p).unwrap().shared);
+        session.stop_sync();
+        session.start_sync("test-mac".into()).unwrap();
     }
 
     #[test]

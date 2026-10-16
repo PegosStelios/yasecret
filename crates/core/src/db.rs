@@ -146,16 +146,47 @@ impl Db {
             CREATE UNIQUE INDEX IF NOT EXISTS idx_secret_env_key
                 ON secret(env_id, key);
         ")?;
-        let has_is_secret: bool = self.conn.query_row(
-            "SELECT count(*) FROM pragma_table_info('secret') WHERE name = 'is_secret'",
-            [],
-            |r| r.get::<_, i64>(0),
-        )? > 0;
-        if !has_is_secret {
-            self.conn.execute_batch(
-                "ALTER TABLE secret ADD COLUMN is_secret INTEGER NOT NULL DEFAULT 1;",
-            )?;
+        self.add_column("secret", "is_secret", "INTEGER NOT NULL DEFAULT 1")?;
+        if self.add_column("environment", "updated_at", "INTEGER NOT NULL DEFAULT 0")? {
+            self.conn.execute_batch("UPDATE environment SET updated_at = created_at;")?;
         }
+        if self.add_column("project", "updated_at", "INTEGER NOT NULL DEFAULT 0")? {
+            self.conn.execute_batch("UPDATE project SET updated_at = created_at;")?;
+        }
+        self.add_column("sync_doc", "owner_sign_pub", "TEXT")?;
+        self.conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS tombstone (
+                id         TEXT PRIMARY KEY,
+                kind       TEXT NOT NULL,
+                project_id TEXT NOT NULL,
+                deleted_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS sync_invite (
+                id          TEXT PRIMARY KEY,
+                project_id  TEXT NOT NULL,
+                kind        TEXT NOT NULL,
+                peer_id     TEXT,
+                level       TEXT NOT NULL,
+                created_at  INTEGER NOT NULL,
+                expires_at  INTEGER NOT NULL,
+                redeemed_by TEXT
+            );
+        ")?;
         Ok(())
+    }
+
+    /// Adds a column when an older vault lacks it. Returns true if it was added.
+    fn add_column(&self, table: &str, column: &str, ddl: &str) -> Result<bool> {
+        let exists: i64 = self.conn.query_row(
+            &format!("SELECT count(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+            [column],
+            |r| r.get(0),
+        )?;
+        if exists > 0 {
+            return Ok(false);
+        }
+        self.conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {ddl};"))?;
+        Ok(true)
     }
 }

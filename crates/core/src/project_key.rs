@@ -36,3 +36,49 @@ pub fn load(db: &Db, project_id: &str, db_key: &[u8; 32]) -> Result<Zeroizing<[u
         .map_err(|_| YasecretError::Crypto)?;
     Ok(Zeroizing::new(key_bytes))
 }
+
+/// Stores a project key received from another peer.
+pub fn store(db: &Db, project_id: &str, key: &[u8; 32], db_key: &[u8; 32]) -> Result<()> {
+    let (encrypted_key, nonce) = crypto::encrypt(key, db_key)?;
+    db.conn().execute(
+        "INSERT OR REPLACE INTO project_key (project_id, encrypted_key, key_nonce) VALUES (?1,?2,?3)",
+        rusqlite::params![project_id, &encrypted_key, nonce.as_ref()],
+    )?;
+    Ok(())
+}
+
+/// Replaces the project key and re-encrypts every value and version in the project.
+/// Anyone holding the old key can no longer read values written after this.
+pub fn rotate(db: &Db, project_id: &str, db_key: &[u8; 32]) -> Result<()> {
+    let old = load(db, project_id, db_key)?;
+    let new = crypto::generate_project_key();
+    let tx = db.conn().unchecked_transaction()?;
+    for table in ["secret", "secret_version"] {
+        let id_filter = if table == "secret" {
+            "SELECT s.id, s.encrypted_value, s.nonce FROM secret s JOIN environment e ON e.id = s.env_id WHERE e.project_id = ?1"
+        } else {
+            "SELECT v.id, v.encrypted_value, v.nonce FROM secret_version v JOIN secret s ON s.id = v.secret_id JOIN environment e ON e.id = s.env_id WHERE e.project_id = ?1"
+        };
+        let rows: Vec<(String, Vec<u8>, Vec<u8>)> = {
+            let mut stmt = tx.prepare(id_filter)?;
+            let mapped = stmt.query_map([project_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            mapped.collect::<rusqlite::Result<_>>()?
+        };
+        for (id, enc, nonce) in rows {
+            let nonce: [u8; 12] = nonce.try_into().map_err(|_| YasecretError::Crypto)?;
+            let plain = crypto::decrypt(&enc, &nonce, &old)?;
+            let (enc2, nonce2) = crypto::encrypt(&plain, &new)?;
+            tx.execute(
+                &format!("UPDATE {table} SET encrypted_value = ?1, nonce = ?2 WHERE id = ?3"),
+                rusqlite::params![&enc2, nonce2.as_ref(), &id],
+            )?;
+        }
+    }
+    let (encrypted_key, nonce) = crypto::encrypt(new.as_ref(), db_key)?;
+    tx.execute(
+        "UPDATE project_key SET encrypted_key = ?1, key_nonce = ?2 WHERE project_id = ?3",
+        rusqlite::params![&encrypted_key, nonce.as_ref(), project_id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}

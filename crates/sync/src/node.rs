@@ -1,11 +1,12 @@
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use crate::{Result, SyncError};
 
 pub struct SyncNode {
-    endpoint: iroh::Endpoint,
-    engine: Arc<iroh_docs::engine::Engine>,
-    pub docs: iroh_docs::api::DocsApi,
+    router: iroh::protocol::Router,
+    docs: iroh_docs::protocol::Docs,
+    // Held so the on-disk blob store actor stays alive for the node's lifetime.
+    blobs: iroh_blobs::store::fs::FsStore,
 }
 
 impl SyncNode {
@@ -37,46 +38,46 @@ impl SyncNode {
             .await
             .map_err(|e| SyncError::Iroh(anyhow::anyhow!("{e}")))?;
 
+        let blobs = iroh_blobs::store::fs::FsStore::load(data_dir.join("blobs"))
+            .await
+            .map_err(|e| SyncError::Iroh(anyhow::anyhow!("blob store: {e}")))?;
         let gossip = iroh_gossip::net::Gossip::builder().spawn(endpoint.clone());
-        let bao_store: iroh_blobs::api::Store =
-            iroh_blobs::store::mem::MemStore::new().into();
-        let replica_store = iroh_docs::store::fs::Store::memory();
-        let downloader = bao_store.downloader(&endpoint);
+        let docs = iroh_docs::protocol::Docs::persistent(data_dir.to_path_buf())
+            .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
+            .await
+            .map_err(|e| SyncError::Iroh(anyhow::anyhow!("docs: {e}")))?;
 
-        let engine = iroh_docs::engine::Engine::spawn(
-            endpoint.clone(),
-            gossip,
-            replica_store,
-            bao_store,
-            downloader,
-            iroh_docs::engine::DefaultAuthorStorage::Mem,
-            None,
-        )
-        .await
-        .map_err(anyhow::Error::from)?;
+        // Without a router the node can dial out but rejects every incoming sync connection.
+        let router = iroh::protocol::Router::builder(endpoint)
+            .accept(iroh_blobs::ALPN, iroh_blobs::BlobsProtocol::new(&blobs, None))
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_docs::ALPN, docs.clone())
+            .spawn();
 
-        let engine = Arc::new(engine);
-        let docs = iroh_docs::api::DocsApi::spawn(engine.clone());
-
-        Ok(Self { endpoint, engine, docs })
+        Ok(Self { router, docs, blobs })
     }
 
     /// Node ID as lowercase hex (stable for the same secret key).
     pub fn node_id(&self) -> String {
-        hex::encode(self.endpoint.id().as_bytes())
+        hex::encode(self.router.endpoint().id().as_bytes())
     }
 
     /// Access the iroh-docs API (create, import, open docs; create authors).
     pub fn client(&self) -> &iroh_docs::api::DocsApi {
-        &self.docs
+        self.docs.api()
     }
 
     pub fn blob_store(&self) -> &iroh_blobs::api::Store {
-        self.engine.blob_store()
+        &self.blobs
+    }
+
+    /// Stops all protocols and releases the on-disk stores so the same directory can be reopened.
+    pub async fn shutdown(&self) {
+        let _ = self.router.shutdown().await;
+        let _ = self.blobs.shutdown().await;
     }
 
     pub async fn stop(self) {
-        let _ = self.engine.shutdown().await;
-        self.endpoint.close().await;
+        self.shutdown().await;
     }
 }

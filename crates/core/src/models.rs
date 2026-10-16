@@ -16,6 +16,7 @@ pub struct Project {
     pub description: Option<String>,
     pub created_at: i64,
     pub owner_id: String,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +25,7 @@ pub struct Environment {
     pub project_id: String,
     pub name: String,
     pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Debug, Clone)]

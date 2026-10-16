@@ -10,10 +10,11 @@ pub fn create(db: &Db, project_id: &str, name: &str) -> Result<Environment> {
         project_id: project_id.to_string(),
         name: name.to_string(),
         created_at: now(),
+        updated_at: now(),
     };
     db.conn().execute(
-        "INSERT INTO environment (id, project_id, name, created_at) VALUES (?1,?2,?3,?4)",
-        rusqlite::params![&e.id, &e.project_id, &e.name, e.created_at],
+        "INSERT INTO environment (id, project_id, name, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
+        rusqlite::params![&e.id, &e.project_id, &e.name, e.created_at, e.updated_at],
     )?;
     Ok(e)
 }
@@ -21,7 +22,7 @@ pub fn create(db: &Db, project_id: &str, name: &str) -> Result<Environment> {
 pub fn get(db: &Db, id: &str) -> Result<Environment> {
     db.conn()
         .query_row(
-            "SELECT id, project_id, name, created_at FROM environment WHERE id = ?1",
+            "SELECT id, project_id, name, created_at, updated_at FROM environment WHERE id = ?1",
             [id],
             |r| {
                 Ok(Environment {
@@ -29,6 +30,7 @@ pub fn get(db: &Db, id: &str) -> Result<Environment> {
                     project_id: r.get(1)?,
                     name: r.get(2)?,
                     created_at: r.get(3)?,
+                    updated_at: r.get(4)?,
                 })
             },
         )
@@ -37,7 +39,7 @@ pub fn get(db: &Db, id: &str) -> Result<Environment> {
 
 pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id, project_id, name, created_at FROM environment WHERE project_id = ?1 ORDER BY created_at",
+        "SELECT id, project_id, name, created_at, updated_at FROM environment WHERE project_id = ?1 ORDER BY created_at",
     )?;
     let rows = stmt.query_map([project_id], |r| {
         Ok(Environment {
@@ -45,6 +47,7 @@ pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
             project_id: r.get(1)?,
             name: r.get(2)?,
             created_at: r.get(3)?,
+            updated_at: r.get(4)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -52,8 +55,8 @@ pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
 
 pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
     let n = db.conn().execute(
-        "UPDATE environment SET name = ?1 WHERE id = ?2",
-        rusqlite::params![new_name, id],
+        "UPDATE environment SET name = ?1, updated_at = ?2 WHERE id = ?3",
+        rusqlite::params![new_name, now(), id],
     )?;
     if n == 0 { return Err(YasecretError::NotFound(format!("environment {id}"))); }
     Ok(())
@@ -83,7 +86,12 @@ pub fn secret_count(db: &Db, id: &str) -> Result<u32> {
 }
 
 pub fn delete(db: &Db, id: &str) -> Result<()> {
+    let env = get(db, id)?;
+    for s in crate::secret::list(db, id)? {
+        crate::tombstone::record(db, &s.id, "secret", &env.project_id)?;
+    }
     db.conn()
         .execute("DELETE FROM environment WHERE id = ?1", [id])?;
+    crate::tombstone::record(db, id, "env", &env.project_id)?;
     Ok(())
 }

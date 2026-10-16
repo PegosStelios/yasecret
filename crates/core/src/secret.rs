@@ -138,6 +138,14 @@ pub fn rename_key(db: &Db, secret_id: &str, new_key: &str, caller_id: &str) -> R
 }
 
 pub fn delete(db: &Db, secret_id: &str, caller_id: &str) -> Result<()> {
+    let project_id: Option<String> = db.conn().query_row(
+        "SELECT e.project_id FROM secret s JOIN environment e ON e.id = s.env_id WHERE s.id = ?1",
+        [secret_id],
+        |r| r.get(0),
+    ).ok();
+    if let Some(pid) = project_id {
+        crate::tombstone::record(db, secret_id, "secret", &pid)?;
+    }
     db.conn()
         .execute("DELETE FROM secret WHERE id=?1", [secret_id])?;
     audit::append(db, caller_id, "deleted_secret", "secret", secret_id, None)?;
