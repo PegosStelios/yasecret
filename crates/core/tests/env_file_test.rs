@@ -1,4 +1,4 @@
-use yasecret_core::env_file;
+use yasecret_core::env_file::{self, parse, serialize};
 
 #[test]
 fn parse_basic() {
@@ -64,7 +64,7 @@ fn serialize_roundtrip() {
 fn serialize_quotes_values_with_spaces() {
     let pairs = vec![("MSG".into(), "hello world".into())];
     let out = env_file::serialize(&pairs);
-    assert!(out.contains('"'));
+    assert!(out.contains('\'') || out.contains('"'), "value with spaces must be quoted: {out}");
     let back = env_file::parse(&out).unwrap();
     assert_eq!(back[0].1, "hello world");
 }
@@ -82,4 +82,44 @@ fn parse_inline_comment_not_stripped() {
     let content = "KEY=value\n";
     let pairs = env_file::parse(content).unwrap();
     assert_eq!(pairs[0].1, "value");
+}
+
+#[test]
+fn awkward_values_survive_serialize_then_parse() {
+    let values = [
+        "plain",
+        "with space",
+        "has \"double\" quotes",
+        "it's",
+        "line1\nline2",
+        "tab\there",
+        "back\\slash",
+        "hash # not a comment",
+        "a#b",
+        "$HOME and ${PATH}",
+        "both ' and \"",
+        "  leading and trailing  ",
+        "",
+        "=starts with equals",
+        "-----BEGIN KEY-----\nMIIabc\n-----END KEY-----",
+    ];
+    let pairs: Vec<(String, String)> = values.iter().enumerate().map(|(i, v)| (format!("K{i}"), v.to_string())).collect();
+    let text = serialize(&pairs);
+    assert_eq!(parse(&text).unwrap(), pairs, "serialized:\n{text}");
+}
+
+#[test]
+fn parses_common_dotenv_forms() {
+    let text = "A=\"x\\ny\"\nB='literal \\n $X'\nC=unquoted # comment\nD=\"multi\nline\"\nexport E=1\n";
+    let got = parse(text).unwrap();
+    assert_eq!(
+        got,
+        vec![
+            ("A".into(), "x\ny".into()),
+            ("B".into(), "literal \\n $X".into()),
+            ("C".into(), "unquoted".into()),
+            ("D".into(), "multi\nline".into()),
+            ("E".into(), "1".into()),
+        ]
+    );
 }

@@ -1,47 +1,120 @@
 use crate::error::{Result, YasecretError};
 
+/// Parses dotenv text: `export` prefixes, `#` comment lines, inline ` # comments` after
+/// unquoted values, literal single-quoted values, and double-quoted values with escapes
+/// (`\n \r \t \" \\ \$`). Quoted values may span lines.
 pub fn parse(content: &str) -> Result<Vec<(String, String)>> {
+    let lines: Vec<&str> = content.split('\n').map(|l| l.strip_suffix('\r').unwrap_or(l)).collect();
     let mut pairs = vec![];
-    for (lineno, line) in content.lines().enumerate() {
-        let trimmed = line.trim();
+    let mut i = 0;
+    while i < lines.len() {
+        let lineno = i + 1;
+        let trimmed = lines[i].trim();
+        i += 1;
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let eq_pos = trimmed.find('=').ok_or_else(|| {
-            YasecretError::EnvParse(format!("line {}: missing '='", lineno + 1))
-        })?;
+        let eq_pos = trimmed
+            .find('=')
+            .ok_or_else(|| YasecretError::EnvParse(format!("line {lineno}: missing '='")))?;
         let key = trimmed[..eq_pos].trim();
         let key = key.strip_prefix("export ").map(str::trim).unwrap_or(key).to_string();
-        let raw_value = &trimmed[eq_pos + 1..];
-        let value = unquote(raw_value);
+        let rest = trimmed[eq_pos + 1..].trim_start();
+        let value = match rest.chars().next() {
+            Some(q @ ('"' | '\'')) => {
+                // Gather text up to the closing quote, continuing onto following lines.
+                let mut text = rest[1..].to_string();
+                loop {
+                    if let Some(end) = closing_quote(&text, q) {
+                        text.truncate(end);
+                        break;
+                    }
+                    if i >= lines.len() {
+                        return Err(YasecretError::EnvParse(format!("line {lineno}: missing closing {q}")));
+                    }
+                    text.push('\n');
+                    text.push_str(lines[i]);
+                    i += 1;
+                }
+                if q == '"' { unescape(&text) } else { text }
+            }
+            _ => match rest.find(" #").or_else(|| rest.find("\t#")) {
+                Some(c) => rest[..c].trim_end().to_string(),
+                None => rest.trim_end().to_string(),
+            },
+        };
         pairs.push((key, value));
     }
     Ok(pairs)
 }
 
-fn unquote(s: &str) -> String {
-    let s = s.trim();
-    if s.len() >= 2 {
-        let first = s.chars().next().unwrap();
-        let last = s.chars().last().unwrap();
-        if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
-            return s[1..s.len() - 1].to_string();
+/// Byte index of the first unescaped `q` (single quotes have no escapes).
+fn closing_quote(text: &str, q: char) -> Option<usize> {
+    let mut escaped = false;
+    for (idx, c) in text.char_indices() {
+        if q == '"' && escaped {
+            escaped = false;
+        } else if q == '"' && c == '\\' {
+            escaped = true;
+        } else if c == q {
+            return Some(idx);
         }
     }
-    s.to_string()
+    None
 }
 
-pub fn serialize(pairs: &[(String, String)]) -> String {
-    pairs
-        .iter()
-        .map(|(k, v)| {
-            if v.contains(' ') || v.contains('"') || v.contains('\'') {
-                format!("{k}=\"{}\"\n", v.replace('"', "\\\""))
-            } else {
-                format!("{k}={v}\n")
+fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('r') => out.push('\r'),
+            Some('t') => out.push('\t'),
+            Some(e @ ('"' | '\\' | '$')) => out.push(e),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
             }
-        })
-        .collect()
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+/// Writes dotenv text that `parse` (and common loaders) read back exactly: simple values
+/// bare, others single-quoted (literal, so `$` is never expanded) or, when they contain a
+/// single quote or line break, double-quoted with escapes.
+pub fn serialize(pairs: &[(String, String)]) -> String {
+    pairs.iter().map(|(k, v)| format!("{k}={}\n", quote_value(v))).collect()
+}
+
+fn quote_value(v: &str) -> String {
+    let bare = |c: char| c.is_ascii_alphanumeric() || "_-./:@,+=%~".contains(c);
+    if v.chars().all(bare) {
+        v.to_string()
+    } else if !v.contains('\'') && !v.contains('\n') && !v.contains('\r') {
+        format!("'{v}'")
+    } else {
+        let mut out = String::from("\"");
+        for c in v.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '"' => out.push_str("\\\""),
+                '$' => out.push_str("\\$"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    }
 }
 
 pub fn parse_example(content: &str) -> Result<Vec<String>> {
