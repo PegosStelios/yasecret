@@ -1,3 +1,5 @@
+mod hello;
+
 use std::{
     path::Path,
     sync::{Arc, Mutex},
@@ -77,6 +79,8 @@ struct VaultState {
     first_run: bool,
     unlocked: bool,
     has_remembered: bool,
+    /// Windows Hello guards the remembered password.
+    hello: bool,
     dev_password: bool,
 }
 
@@ -86,6 +90,7 @@ fn vault_state(vault: State<'_, Vault>) -> VaultState {
         first_run: !Path::new(&vault.db_path).exists(),
         unlocked: vault.session.lock().unwrap().is_some(),
         has_remembered: keyring_entry(&vault.db_path).and_then(|e| e.get_password().ok()).is_some(),
+        hello: hello::available(),
         dev_password: dev_password().is_some(),
     }
 }
@@ -137,10 +142,16 @@ async fn unlock(vault: State<'_, Vault>, password: String, confirm: Option<Strin
 }
 
 #[tauri::command]
-async fn unlock_remembered(vault: State<'_, Vault>) -> CmdResult<()> {
+async fn unlock_remembered(window: tauri::WebviewWindow, vault: State<'_, Vault>) -> CmdResult<()> {
     let password = keyring_entry(&vault.db_path)
         .and_then(|e| e.get_password().ok())
         .ok_or_else(|| "No saved password on this device".to_string())?;
+    if hello::available() {
+        let hwnd = hello::window_handle(&window);
+        tauri::async_runtime::spawn_blocking(move || hello::verify(hwnd, "Unlock Yasecret"))
+            .await
+            .map_err(|e| e.to_string())??;
+    }
     open_session(&vault, password).await
 }
 

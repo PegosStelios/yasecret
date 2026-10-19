@@ -8771,6 +8771,8 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-single-instance",
+ "windows",
+ "windows-future",
  "yasecret-ffi",
 ]
 

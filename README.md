@@ -19,7 +19,7 @@ A local-first secrets manager for `.env` files. Your variables live in an encryp
 - **History** of every value with one-click restore, plus an **activity log** (adds, edits, deletes, reveals, synced changes).
 - **Expiry dates** on variables with reminders a week before.
 - **Sharing without a server.** Devices sync peer-to-peer; invite teammates with edit or view-only access.
-- **Locking.** Touch ID / Keychain on macOS, Windows Credential Manager on Windows; auto-lock on sleep or screen lock (macOS) or after 10 minutes idle (Windows). Copied secrets are cleared from the clipboard after 60 seconds.
+- **Locking.** Touch ID / Keychain on macOS; Windows Hello on Windows (the remembered password lives in Credential Manager and Yasecret asks for Hello before using it); auto-lock on sleep or screen lock (macOS) or after 10 minutes idle (Windows). Copied secrets are cleared from the clipboard after 60 seconds.
 
 ## Screenshots
 

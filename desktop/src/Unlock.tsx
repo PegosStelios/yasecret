@@ -7,7 +7,7 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
   const [state, setState] = useState<VaultState | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  // No Windows Hello prompt guards the saved password, so saving it is opt-in.
+  // Saving is opt-in unless Windows Hello guards the saved password.
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,8 +16,14 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
     api.vaultState().catch((e) => { setError(errorText(e)); return null; }).then(async (s) => {
       if (!s) return;
       setState(s);
+      setRemember(s.hello);
       if (s.devPassword) {
         await api.devUnlock().then(onUnlocked).catch((e) => setError(errorText(e)));
+      } else if (s.hello && s.hasRemembered && !s.firstRun) {
+        // Like Touch ID on the Mac: ask straight away; cancelling leaves the password field.
+        setBusy(true);
+        await api.unlockRemembered().then(onUnlocked).catch((e) => setError(errorText(e)));
+        setBusy(false);
       }
     });
   }, [onUnlocked]);
@@ -64,7 +70,7 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
         {firstRun && <TextInput type="password" placeholder="Confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
         <label className="flex w-full items-center gap-2 text-muted">
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          Remember on this device
+          {state.hello ? "Unlock with Windows Hello next time" : "Remember on this device"}
         </label>
         {error && <p className="text-[13px] text-danger">{error}</p>}
         <Button type="submit" variant="primary" disabled={busy || !password || (firstRun && !confirm)} className="w-full justify-center">
@@ -72,7 +78,7 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
         </Button>
         {state.hasRemembered && !firstRun && (
           <div className="flex gap-1">
-            <Button variant="ghost" onClick={useSaved} disabled={busy}>Unlock with saved password</Button>
+            <Button variant="ghost" onClick={useSaved} disabled={busy}>{state.hello ? "Unlock with Windows Hello" : "Unlock with saved password"}</Button>
             <Button
               variant="ghost"
               disabled={busy}

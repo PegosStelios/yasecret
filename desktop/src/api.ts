@@ -26,7 +26,7 @@ export type SyncStatus = {
   lastSyncedAt: number | null;
   lastError: string | null;
 };
-export type VaultState = { firstRun: boolean; unlocked: boolean; hasRemembered: boolean; devPassword: boolean };
+export type VaultState = { firstRun: boolean; unlocked: boolean; hasRemembered: boolean; hello: boolean; devPassword: boolean };
 export type ExportFormat = "dotenv" | "json" | "docker-compose" | "k8s-secret" | "k8s-configmap" | "example";
 
 /** Thin typed wrappers over the Rust commands; errors arrive as readable strings. */
