@@ -409,6 +409,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KBUP5U37QG;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -416,9 +417,10 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a",
+					"$(SRCROOT)/../target/release/libyasecret_ffi.a",
 					"-framework",
 					Security,
 					"-framework",
@@ -427,7 +429,6 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
 				PRODUCT_NAME = Yasecret;
-				RUST_PROFILE = release;
 				SDKROOT = macosx;
 				SWIFT_INCLUDE_PATHS = (
 					"$(inherited)",
@@ -501,6 +502,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KBUP5U37QG;
 				INFOPLIST_FILE = Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -508,18 +510,14 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a",
-					"-framework",
-					Security,
-					"-framework",
-					SystemConfiguration,
-					"-lresolv",
+					"-L$(SRCROOT)/../target/debug",
+					"-lyasecret_ffi",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
 				PRODUCT_NAME = Yasecret;
-				RUST_PROFILE = debug;
 				SDKROOT = macosx;
 				SWIFT_INCLUDE_PATHS = (
 					"$(inherited)",

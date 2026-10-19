@@ -45,6 +45,10 @@ jobs:
 
       - uses: ilammy/setup-nasm@v1
 
+      # Never ship an update from a commit whose tests fail.
+      - name: Rust tests
+        run: cargo test -p yasecret-core -p yasecret-ffi
+
       - name: Install frontend dependencies
         working-directory: desktop
         run: pnpm install --frozen-lockfile
@@ -68,15 +72,18 @@ jobs:
   macos:
     needs: windows
     runs-on: macos-15
-    env:
-      # Signing and notarization turn on once these secrets exist; until then the app is ad-hoc signed.
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    # Signing and notarization turn on once the Apple secrets exist; until then the app is
+    # ad-hoc signed. Secrets are passed only to the steps that need them.
     steps:
+      - name: Check for signing secrets
+        id: apple
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+        run: |
+          echo "sign=$([ -n "$APPLE_CERTIFICATE" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          echo "notarize=$([ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_ID" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
@@ -87,7 +94,10 @@ jobs:
         run: brew install xcodegen
 
       - name: Import signing certificate
-        if: env.APPLE_CERTIFICATE != ''
+        if: steps.apple.outputs.sign == 'yes'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           keychain="$RUNNER_TEMP/signing.keychain-db"
           kc_pass=$(openssl rand -hex 16)
@@ -101,20 +111,29 @@ jobs:
 
       - name: Build
         working-directory: macos
+        env:
+          SIGN: ${{ steps.apple.outputs.sign }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodegen generate
-          if [ -n "$APPLE_CERTIFICATE" ]; then
+          if [ "$SIGN" = yes ]; then
             sign=(CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp)
           else
             sign=(CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
           fi
           xcodebuild -project Yasecret.xcodeproj -scheme Yasecret -configuration Release \
-            -derivedDataPath build CODE_SIGN_STYLE=Manual "${sign[@]}" build
+            -derivedDataPath build CODE_SIGN_STYLE=Manual "${sign[@]}" \
+            MARKETING_VERSION="${GITHUB_REF_NAME#v}" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" build
           ditto -c -k --keepParent build/Build/Products/Release/Yasecret.app "$RUNNER_TEMP/Yasecret-macOS.zip"
 
       - name: Notarize
-        if: env.APPLE_CERTIFICATE != '' && env.APPLE_ID != ''
+        if: steps.apple.outputs.notarize == 'yes'
         working-directory: macos
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcrun notarytool submit "$RUNNER_TEMP/Yasecret-macOS.zip" --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait

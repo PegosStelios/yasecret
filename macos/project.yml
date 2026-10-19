@@ -17,6 +17,8 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Yasecret
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSHumanReadableDescription: "Local-first secrets manager"
         NSFaceIDUsageDescription: "Used to unlock your secret vault"
         CFBundleURLTypes:
@@ -28,28 +30,34 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         PRODUCT_NAME: Yasecret
         PRODUCT_BUNDLE_IDENTIFIER: com.yasecret.app
+        # The release workflow overrides both from the tag.
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
         # A stable signature keeps Keychain access across rebuilds.
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Apple Development"
         DEVELOPMENT_TEAM: KBUP5U37QG
-        # Link the static library so the app doesn't depend on a dylib inside target/.
-        OTHER_LDFLAGS:
-          - "$(inherited)"
-          - "$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a"
-          - "-framework"
-          - "Security"
-          - "-framework"
-          - "SystemConfiguration"
-          - "-lresolv"
         SWIFT_INCLUDE_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Generated"
         SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/Sources/BridgingHeader.h"
       configs:
+        # Debug loads the dylib from target/ at runtime: fast links, always the latest Rust code.
         Debug:
-          RUST_PROFILE: debug
+          OTHER_LDFLAGS:
+            - "$(inherited)"
+            - "-L$(SRCROOT)/../target/debug"
+            - "-lyasecret_ffi"
+        # Release links the static library so the app runs on any Mac.
         Release:
-          RUST_PROFILE: release
+          OTHER_LDFLAGS:
+            - "$(inherited)"
+            - "$(SRCROOT)/../target/release/libyasecret_ffi.a"
+            - "-framework"
+            - "Security"
+            - "-framework"
+            - "SystemConfiguration"
+            - "-lresolv"
     preBuildScripts:
       - name: "Build Rust FFI"
         script: '"${SRCROOT}/Scripts/build_rust.sh"'

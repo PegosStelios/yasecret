@@ -22,8 +22,9 @@ export default function UpdateBar() {
     setState("installing");
     setError(null);
     try {
+      // On Windows the installer closes the app itself; relaunch covers the other platforms.
       await update.downloadAndInstall();
-      await relaunch();
+      await relaunch().catch(() => {});
     } catch (e) {
       setError(errorText(e));
       setState("idle");
@@ -33,7 +34,9 @@ export default function UpdateBar() {
     <div className="flex items-center gap-3 border-b border-line bg-field px-4 py-2 text-[13px]">
       <Download size={15} className="text-accent" />
       <span className="flex-1">
-        {error ? `Update failed: ${error}` : `Yasecret ${update.version} is available.`}
+        {error
+          ? `Update failed: ${error}`
+          : `Yasecret ${update.version} is available. Installing closes Yasecret, so save any open edits first.`}
       </span>
       <Button variant="ghost" disabled={state === "installing"} onClick={() => setState("dismissed")}>Later</Button>
       <Button variant="primary" disabled={state === "installing"} onClick={install}>
