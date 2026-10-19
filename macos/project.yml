@@ -32,17 +32,24 @@ targets:
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "Apple Development"
         DEVELOPMENT_TEAM: KBUP5U37QG
+        # Link the static library so the app doesn't depend on a dylib inside target/.
         OTHER_LDFLAGS:
           - "$(inherited)"
-          - "-L$(SRCROOT)/../target/debug"
-          - "-lyasecret_ffi"
-        LIBRARY_SEARCH_PATHS:
-          - "$(inherited)"
-          - "$(SRCROOT)/../target/debug"
+          - "$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a"
+          - "-framework"
+          - "Security"
+          - "-framework"
+          - "SystemConfiguration"
+          - "-lresolv"
         SWIFT_INCLUDE_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Generated"
         SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/Sources/BridgingHeader.h"
+      configs:
+        Debug:
+          RUST_PROFILE: debug
+        Release:
+          RUST_PROFILE: release
     preBuildScripts:
       - name: "Build Rust FFI"
         script: '"${SRCROOT}/Scripts/build_rust.sh"'

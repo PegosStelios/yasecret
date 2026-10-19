@@ -33,9 +33,13 @@ The desktop app (Tauri, the Windows build) has the same layout. Shown here runni
 
 ## Install
 
-**Windows.** Installers are built by GitHub Actions on every push to `main`: open the latest [Windows build](../../actions/workflows/windows.yml) run and download `yasecret-windows` under *Artifacts* (`*-setup.exe` for a per-user install, `.msi` for managed installs). The installer isn't code-signed yet, so Windows SmartScreen will warn; choose *More info → Run anyway*.
+Tagged versions are published on the [Releases](../../releases) page: a Windows installer (`*-setup.exe` per-user, `.msi` for managed installs) and a macOS app (`Yasecret-macOS.zip`). Between releases, every push to `main` builds Windows installers you can download from the latest [Windows build](../../actions/workflows/windows.yml) run under *Artifacts*.
 
-**macOS.** Build from source (below). A signed download is not available yet.
+**Windows.** The app checks for updates on launch and offers to install them. Updates are signed with Yasecret's update key and verified before they're applied. The installer itself isn't code-signed yet, so SmartScreen will warn on first install; choose *More info → Run anyway*.
+
+**macOS.** The app isn't signed with a Developer ID yet, so after unzipping, right-click *Yasecret.app → Open* the first time (or run `xattr -dr com.apple.quarantine Yasecret.app`). You can also build from source (below).
+
+**Cutting a release:** bump `version` in `desktop/src-tauri/tauri.conf.json`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The [Release](.github/workflows/release.yml) workflow builds both apps into a draft release; publishing the draft makes the update available. It needs the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets; adding `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_ID` and `APPLE_APP_PASSWORD` turns on Developer ID signing and notarization for the Mac app.
 
 ## How sharing works
 

@@ -4,6 +4,7 @@ import { getCurrent } from "@tauri-apps/plugin-deep-link";
 import { api } from "./api";
 import Unlock from "./Unlock";
 import Main from "./MainWindow";
+import UpdateBar from "./Update";
 
 const IDLE_LOCK_MS = 10 * 60 * 1000;
 
@@ -41,9 +42,16 @@ export default function App() {
   }, [unlocked, lock]);
 
   if (unlocked === null) return null;
-  return unlocked ? (
-    <Main onLock={lock} joinLink={joinLink} onJoinLinkHandled={() => setJoinLink(null)} />
-  ) : (
-    <Unlock onUnlocked={() => setUnlocked(true)} />
+  return (
+    <div className="flex h-full flex-col">
+      <UpdateBar />
+      <div className="min-h-0 flex-1">
+        {unlocked ? (
+          <Main onLock={lock} joinLink={joinLink} onJoinLinkHandled={() => setJoinLink(null)} />
+        ) : (
+          <Unlock onUnlocked={() => setUnlocked(true)} />
+        )}
+      </div>
+    </div>
   );
 }

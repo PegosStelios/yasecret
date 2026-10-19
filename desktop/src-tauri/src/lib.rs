@@ -525,6 +525,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Vault { db_path: db_path(), session: Arc::new(Mutex::new(None)), sync_error: Arc::new(Mutex::new(None)) })
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;

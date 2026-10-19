@@ -415,18 +415,19 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../target/debug",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"-L$(SRCROOT)/../target/debug",
-					"-lyasecret_ffi",
+					"$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
 				PRODUCT_NAME = Yasecret;
+				RUST_PROFILE = release;
 				SDKROOT = macosx;
 				SWIFT_INCLUDE_PATHS = (
 					"$(inherited)",
@@ -506,18 +507,19 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../target/debug",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
-					"-L$(SRCROOT)/../target/debug",
-					"-lyasecret_ffi",
+					"$(SRCROOT)/../target/$(RUST_PROFILE)/libyasecret_ffi.a",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.yasecret.app;
 				PRODUCT_NAME = Yasecret;
+				RUST_PROFILE = debug;
 				SDKROOT = macosx;
 				SWIFT_INCLUDE_PATHS = (
 					"$(inherited)",
