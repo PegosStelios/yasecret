@@ -17,14 +17,19 @@ enum Commands {
     Pull(cmd::pull::PullArgs),
     /// Send a local .env or JSON file into an environment
     Push(cmd::push::PushArgs),
-    /// Compare a local .env with an environment (key names only); exits 1 when they differ
+    /// Compare a local .env with an environment (key names only); exit 0 same, 1 different, 2 error
     Diff(cmd::diff::DiffArgs),
     /// Keep a local .env up to date as the environment changes
     Dev(cmd::dev::DevArgs),
+    /// Run a command with selected variables injected (values masked in its output)
     Run(cmd::run::RunArgs),
+    /// Create an invite link for a project and stay online until it's used
     Share(cmd::share::ShareArgs),
+    /// Join a shared project from an invite link
     Join(cmd::join::JoinArgs),
+    /// Show this device's code for device-bound invites
     Peers(cmd::peers::PeersArgs),
+    /// Serve the vault to Claude Code and other MCP clients over stdio
     Mcp(cmd::mcp::McpArgs),
     /// Run an always-on peer that keeps shared projects reachable while their owner is offline
     Relay(cmd::relay::RelayArgs),
@@ -36,14 +41,14 @@ async fn main() {
     let result: yasecret_core::Result<()> = match cli.command {
         Commands::Pull(args) => cmd::pull::run(args),
         Commands::Push(args) => cmd::push::run(args),
+        // Exit codes follow diff(1): 0 same, 1 different, 2 the comparison failed.
         Commands::Diff(args) => match cmd::diff::run(args) {
-            Ok(differs) => {
-                if differs {
-                    std::process::exit(1);
-                }
-                Ok(())
+            Ok(false) => Ok(()),
+            Ok(true) => std::process::exit(1),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(2);
             }
-            Err(e) => Err(e),
         },
         Commands::Dev(args) => cmd::dev::run(args),
         Commands::Run(args) => cmd::run::run(args),

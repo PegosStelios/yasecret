@@ -113,6 +113,10 @@ fn diff_reports_differences_without_values_and_exits_nonzero() {
     let same = v.file("same.env", "API_KEY=old-key\nPORT=3000\n");
     let out = v.cmd(&["diff", "-p", "shop", "-e", "dev", "-i", &same]);
     assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+
+    // Like diff(1): 2 means the comparison itself failed, so CI can tell drift from breakage.
+    let missing = v.cmd(&["diff", "-p", "nope", "-e", "dev", "-i", &same]);
+    assert_eq!(missing.status.code(), Some(2));
 }
 
 #[test]

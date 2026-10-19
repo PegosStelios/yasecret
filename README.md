@@ -74,7 +74,7 @@ cargo install --path crates/cli        # installs `yasecret`
 
 yasecret pull --project my-app --env development -o .env
 yasecret push --project my-app --env development -i .env   # adds new keys; --overwrite to replace, --dry-run to preview
-yasecret diff --project my-app --env development -i .env   # key names only; exits 1 when they differ (CI-friendly)
+yasecret diff --project my-app --env development -i .env   # key names only; exit 0 same, 1 different, 2 error (CI-friendly)
 yasecret dev  --project my-app --env development -o .env   # rewrites .env whenever the environment changes
 yasecret run  --project my-app --env development --only DATABASE_URL -- npm run migrate
 yasecret peers self                    # this device's code, for device-bound invites

@@ -111,7 +111,10 @@ jobs:
           security unlock-keychain -p "$kc_pass" "$keychain"
           security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$kc_pass" "$keychain"
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # Add ours to the search list without dropping the existing keychains.
+          existing=()
+          while IFS= read -r kc; do existing+=("$kc"); done < <(security list-keychains -d user | sed -e 's/^ *"//' -e 's/"$//')
+          security list-keychains -d user -s "$keychain" "${existing[@]}"
 
       # Built ad-hoc, then re-signed below: Xcode won't sign with an untrusted (self-signed)
       # identity, while codesign does.
