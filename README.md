@@ -3,7 +3,7 @@
 A local-first secrets manager for `.env` files. Your variables live in an encrypted vault on your own machine, sync directly between your team's devices without a server, and can be used by scripts and AI coding agents without being pasted anywhere.
 
 - **macOS app** (SwiftUI) and **Windows app** (Tauri), sharing one Rust core.
-- **CLI** for pulling `.env` files and running commands with secrets injected.
+- **CLI** for pulling, pushing and diffing `.env` files, keeping one live while you develop, and running commands with secrets injected.
 - **MCP server** so Claude Code can use secrets without seeing their values.
 
 ![Yasecret on macOS](docs/screenshots/macos-main.png)
@@ -56,13 +56,16 @@ Limitations: the owner's device must be online for someone to join, and only the
 cargo install --path crates/cli        # installs `yasecret`
 
 yasecret pull --project my-app --env development -o .env
+yasecret push --project my-app --env development -i .env   # adds new keys; --overwrite to replace, --dry-run to preview
+yasecret diff --project my-app --env development -i .env   # key names only; exits 1 when they differ (CI-friendly)
+yasecret dev  --project my-app --env development -o .env   # rewrites .env whenever the environment changes
 yasecret run  --project my-app --env development --only DATABASE_URL -- npm run migrate
 yasecret peers self                    # this device's code, for device-bound invites
 yasecret share --project my-app        # prints an invite link and stays online until you stop it
 yasecret join 'yasecret://join?...'
 ```
 
-`run` injects only the variables you name with `--only`, and masks their values in the command's output. The CLI prompts for your master password. While the desktop app is running it owns the sync node, so share and join from the app instead.
+`push` stores names that look sensitive (`*_KEY`, `*PASSWORD*`, `*TOKEN*`…) as secrets and the rest as plain variables. `dev` also picks up changes the desktop app syncs in from teammates. `run` injects only the variables you name with `--only`, and masks their values in the command's output. The CLI prompts for your master password. While the desktop app is running it owns the sync node, so share and join from the app instead.
 
 ## Claude Code (MCP)
 

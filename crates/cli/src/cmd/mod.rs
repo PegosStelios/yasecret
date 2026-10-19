@@ -1,6 +1,10 @@
+pub mod dev;
+pub mod diff;
 pub mod join;
 pub mod mcp;
 pub mod peers;
 pub mod pull;
+pub mod push;
 pub mod run;
 pub mod share;
+pub mod target;

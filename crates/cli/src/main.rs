@@ -13,7 +13,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Write an environment to a .env file (or stdout)
     Pull(cmd::pull::PullArgs),
+    /// Send a local .env or JSON file into an environment
+    Push(cmd::push::PushArgs),
+    /// Compare a local .env with an environment (key names only); exits 1 when they differ
+    Diff(cmd::diff::DiffArgs),
+    /// Keep a local .env up to date as the environment changes
+    Dev(cmd::dev::DevArgs),
     Run(cmd::run::RunArgs),
     Share(cmd::share::ShareArgs),
     Join(cmd::join::JoinArgs),
@@ -26,6 +33,17 @@ async fn main() {
     let cli = Cli::parse();
     let result: yasecret_core::Result<()> = match cli.command {
         Commands::Pull(args) => cmd::pull::run(args),
+        Commands::Push(args) => cmd::push::run(args),
+        Commands::Diff(args) => match cmd::diff::run(args) {
+            Ok(differs) => {
+                if differs {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+            Err(e) => Err(e),
+        },
+        Commands::Dev(args) => cmd::dev::run(args),
         Commands::Run(args) => cmd::run::run(args),
         Commands::Share(args) => cmd::share::run(args).await,
         Commands::Join(args) => cmd::join::run(args).await,
