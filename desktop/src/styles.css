@@ -15,6 +15,7 @@
   --color-danger: #e5484d;
   --color-warn: #f2a33a;
   --color-ok: #3fb950;
+  --color-violet: #a371f7;
   --font-sans: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
 }

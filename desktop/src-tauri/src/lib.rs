@@ -15,7 +15,9 @@ type CmdResult<T> = Result<T, String>;
 
 struct Vault {
     db_path: String,
-    session: Mutex<Option<Arc<YasecretSession>>>,
+    session: Arc<Mutex<Option<Arc<YasecretSession>>>>,
+    /// Why background sync failed to start, if it did.
+    sync_error: Arc<Mutex<Option<String>>>,
 }
 
 impl Vault {
@@ -28,7 +30,7 @@ fn message(e: FfiError) -> String {
     match e {
         FfiError::WrongPassword => "Wrong password — try again".into(),
         FfiError::NotFound { msg } => format!("Not found: {msg}"),
-        FfiError::PermissionDenied => "You don't have permission to do that".into(),
+        FfiError::PermissionDenied => "You have view-only access to this shared project, so you can't change it".into(),
         FfiError::Crypto => "Couldn't decrypt this value with the vault key".into(),
         FfiError::Io { msg } => format!("File error: {msg}"),
         FfiError::Db { msg } => format!("Database error: {msg}"),
@@ -88,12 +90,28 @@ fn vault_state(vault: State<'_, Vault>) -> VaultState {
     }
 }
 
-fn open_session(vault: &Vault, password: &str) -> CmdResult<()> {
-    let session = YasecretSession::new(vault.db_path.clone(), password.to_string()).map_err(message)?;
-    *vault.session.lock().unwrap() = Some(session.clone());
-    // Sharing starts in the background; failures surface through sync_status.
+/// Opens the vault (key derivation runs on a blocking thread) and starts sync in the background.
+async fn open_session(vault: &Vault, password: String) -> CmdResult<()> {
+    let path = vault.db_path.clone();
+    let session = tauri::async_runtime::spawn_blocking(move || YasecretSession::new(path, password))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(message)?;
+    if let Some(old) = vault.session.lock().unwrap().replace(session.clone()) {
+        std::thread::spawn(move || old.stop_sync());
+    }
+    *vault.sync_error.lock().unwrap() = None;
+    let (slot, error) = (vault.session.clone(), vault.sync_error.clone());
     std::thread::spawn(move || {
-        let _ = session.start_sync(device_name());
+        let result = session.start_sync(device_name());
+        let still_current = slot.lock().unwrap().as_ref().is_some_and(|s| Arc::ptr_eq(s, &session));
+        match result {
+            // Locked (or re-unlocked) while starting: this session is gone, so stop its sync.
+            Ok(()) if !still_current => session.stop_sync(),
+            Ok(()) => {}
+            Err(e) if still_current => *error.lock().unwrap() = Some(message(e)),
+            Err(_) => {}
+        }
     });
     Ok(())
 }
@@ -107,7 +125,7 @@ async fn unlock(vault: State<'_, Vault>, password: String, confirm: Option<Strin
     if password.is_empty() {
         return Err("Enter your master password".into());
     }
-    open_session(&vault, &password)?;
+    open_session(&vault, password.clone()).await?;
     if let Some(entry) = keyring_entry(&vault.db_path) {
         if remember {
             let _ = entry.set_password(&password);
@@ -123,7 +141,7 @@ async fn unlock_remembered(vault: State<'_, Vault>) -> CmdResult<()> {
     let password = keyring_entry(&vault.db_path)
         .and_then(|e| e.get_password().ok())
         .ok_or_else(|| "No saved password on this device".to_string())?;
-    open_session(&vault, &password)
+    open_session(&vault, password).await
 }
 
 fn dev_password() -> Option<String> {
@@ -138,7 +156,7 @@ fn dev_password() -> Option<String> {
 #[tauri::command]
 async fn dev_unlock(vault: State<'_, Vault>) -> CmdResult<()> {
     let pw = dev_password().ok_or_else(|| "not available".to_string())?;
-    open_session(&vault, &pw)
+    open_session(&vault, pw).await
 }
 
 #[tauri::command]
@@ -402,7 +420,40 @@ async fn set_member_level(vault: State<'_, Vault>, project_id: String, peer_id: 
 
 #[tauri::command]
 async fn sync_status(vault: State<'_, Vault>, project_id: String) -> CmdResult<FfiSyncStatus> {
-    blocking(&vault, move |s| s.sync_status(project_id)).await
+    let start_error = vault.sync_error.lock().unwrap().clone();
+    let mut st = blocking(&vault, move |s| s.sync_status(project_id)).await?;
+    if st.shared && st.last_error.is_none() {
+        st.last_error = start_error.map(|e| format!("Sharing unavailable: {e}"));
+    }
+    Ok(st)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExpiringVariable {
+    id: String,
+    label: String,
+    expired: bool,
+}
+
+/// Variables that expired or expire within `days`, across all projects.
+#[tauri::command]
+async fn expiring_variables(vault: State<'_, Vault>, days: i64) -> CmdResult<Vec<ExpiringVariable>> {
+    blocking(&vault, move |s| {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        let mut out = Vec::new();
+        for p in s.list_projects()? {
+            for e in s.list_environments(p.id.clone())? {
+                for v in s.list_secrets(e.id.clone())? {
+                    if let Some(exp) = v.expires_at.filter(|exp| *exp < now + days * 86_400) {
+                        out.push(ExpiringVariable { id: v.id, label: format!("{} ({}/{})", v.key, p.name, e.name), expired: exp <= now });
+                    }
+                }
+            }
+        }
+        Ok(out)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -432,12 +483,13 @@ pub fn run() {
     // A second launch (e.g. from a yasecret:// link) hands its link to the running app.
     #[cfg(any(windows, target_os = "linux"))]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if let Some(link) = argv.iter().find(|a| a.starts_with("yasecret://")) {
-                let _ = app.emit("join-link", link.clone());
-            }
+        // With the deep-link feature the link itself reaches on_open_url; here we only bring
+        // the existing window forward.
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             use tauri::Manager;
             if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
                 let _ = w.set_focus();
             }
         }));
@@ -447,7 +499,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_notification::init())
-        .manage(Vault { db_path: db_path(), session: Mutex::new(None) })
+        .manage(Vault { db_path: db_path(), session: Arc::new(Mutex::new(None)), sync_error: Arc::new(Mutex::new(None)) })
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
             #[cfg(any(windows, target_os = "linux"))]
@@ -500,6 +552,7 @@ pub fn run() {
             list_members,
             set_member_level,
             sync_status,
+            expiring_variables,
             sync_revision,
             stop_sharing,
         ])

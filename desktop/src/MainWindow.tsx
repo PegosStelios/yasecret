@@ -47,16 +47,21 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  // Responses for a project the user already left must not land in the UI.
+  // Responses for a project or environment the user already left must not land in the UI.
   const currentProject = useRef<string | null>(null);
   currentProject.current = projectId;
+  const currentEnv = useRef<string | null>(null);
+  currentEnv.current = envId;
+  // updatedAt of each revealed variable, so a changed value is re-hidden instead of shown stale.
+  const revealedAt = useRef<Record<string, number>>({});
 
   const project = projects.find((p) => p.id === projectId) ?? null;
   const env = envs.find((e) => e.id === envId) ?? null;
   // Right after a project switch the previous environment id lingers for one render;
   // only load variables for an environment that belongs to the current project.
   const envProject = env?.projectId ?? null;
-  const shared = status?.shared ?? false;
+  const shared = status?.shared ?? (projectId ? sharedIds.includes(projectId) : false);
+  // Until a shared project's access level has loaded, treat it as read-only.
   const readOnly = shared && !["owner", "editor"].includes(status?.myLevel ?? "");
 
   const run = useCallback(async <T,>(p: Promise<T>): Promise<T | undefined> => {
@@ -83,20 +88,23 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
   }, []);
 
   const loadSecrets = useCallback(async (pid: string, eid: string) => {
+    const stale = () => currentProject.current !== pid || currentEnv.current !== eid;
     const list = await api.listSecrets(eid);
-    if (currentProject.current !== pid) return;
+    if (stale()) return;
     const plain: Record<string, string> = {};
     await Promise.all(list.filter((s) => !s.isSecret).map(async (s) => { plain[s.id] = await api.getValue(pid, s.id, false); }));
-    if (currentProject.current !== pid) return;
+    if (stale()) return;
     setSecrets(list);
     setPlainValues(plain);
-    setRevealed((r) => Object.fromEntries(Object.entries(r).filter(([id]) => list.some((s) => s.id === id && s.isSecret))));
+    const stamps = new Map(list.filter((s) => s.isSecret).map((s) => [s.id, s.updatedAt]));
+    setRevealed((r) => Object.fromEntries(Object.entries(r).filter(([id]) => stamps.get(id) !== undefined && stamps.get(id) === revealedAt.current[id])));
     setSelection((sel) => new Set([...sel].filter((id) => list.some((s) => s.id === id))));
   }, []);
 
   const loadSharing = useCallback(async (pid: string) => {
-    const st = await api.syncStatus(pid);
+    const [st, ids] = await Promise.all([api.syncStatus(pid), api.sharedProjectIds()]);
     const list = st.shared ? await api.listMembers(pid) : [];
+    setSharedIds(ids);
     if (currentProject.current !== pid) return;
     setStatus(st);
     setMembers(list);
@@ -141,12 +149,32 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
     return () => window.clearInterval(t);
   }, [projectId, loadSharing]);
 
+  // A yasecret:// link waits until the current dialog closes, so nothing in progress is lost.
   useEffect(() => {
-    if (joinLink) {
+    if (joinLink && !sheet) {
       setSheet({ kind: "join", link: joinLink });
       onJoinLinkHandled();
     }
-  }, [joinLink, onJoinLinkHandled]);
+  }, [joinLink, sheet, onJoinLinkHandled]);
+
+  // Expiry reminders, at most once a day per variable.
+  useEffect(() => {
+    api.expiringVariables(7).then(async (items) => {
+      const today = new Date().toDateString();
+      const fresh = items.filter((i) => {
+        try { return localStorage.getItem(`expiry-reminded-${i.id}`) !== today; } catch { return true; }
+      });
+      if (!fresh.length) return;
+      fresh.forEach((i) => { try { localStorage.setItem(`expiry-reminded-${i.id}`, today); } catch { /* reminders just repeat */ } });
+      const { isPermissionGranted, requestPermission, sendNotification } = await import("@tauri-apps/plugin-notification");
+      if (!(await isPermissionGranted()) && (await requestPermission()) !== "granted") return;
+      const names = fresh.slice(0, 3).map((i) => i.label).join(", ") + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : "");
+      sendNotification({
+        title: fresh.some((i) => i.expired) ? "Variables have expired" : "Variables expire soon",
+        body: `${names}. Rotate them in Yasecret.`,
+      });
+    }).catch(() => {});
+  }, []);
 
   const showBanner = (text: string) => {
     setBanner(text);
@@ -165,8 +193,25 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
       setRevealed(({ [s.id]: _, ...rest }) => rest);
     } else {
       const v = await run(api.getValue(project.id, s.id, true));
-      if (v !== undefined) setRevealed((r) => ({ ...r, [s.id]: v }));
+      if (v !== undefined) {
+        revealedAt.current[s.id] = s.updatedAt;
+        setRevealed((r) => ({ ...r, [s.id]: v }));
+      }
     }
+  };
+  const openRowMenu = (s: Secret, x: number, y: number) => {
+    const ids = selection.has(s.id) ? [...selection] : [s.id];
+    if (!selection.has(s.id)) setSelection(new Set([s.id]));
+    const single: MenuItem[] = ids.length === 1 ? [
+      ...(readOnly ? [] : [{ label: "Edit…", onClick: () => setSheet({ kind: "editor", secret: s }) }]),
+      { label: "Copy Value", onClick: () => copyValue(s) },
+      { label: "Copy Key", onClick: () => run(api.copyText(s.key, false)) },
+      { label: "History…", onClick: () => setSheet({ kind: "history", secret: s }) },
+      ...(s.isSecret ? [{ label: revealed[s.id] !== undefined ? "Hide Value" : "Reveal Value", onClick: () => toggleReveal(s) }] : []),
+      ...(readOnly ? [] : [{ label: s.isSecret ? "Mark as Plain" : "Mark as Secret", onClick: () => toggleKind(s) }]),
+    ] : [];
+    const del: MenuItem[] = readOnly ? [] : [{ label: ids.length > 1 ? `Delete ${ids.length} Variables…` : "Delete…", danger: true, onClick: () => askDelete(ids) }];
+    setMenu({ at: { x, y }, items: [...single, ...(single.length && del.length ? (["divider"] as MenuItem[]) : []), ...del] });
   };
   const copyValue = async (s: Secret) => {
     if (!project) return;
@@ -180,9 +225,9 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
     const keys = secrets.filter((s) => ids.includes(s.id)).map((s) => s.key);
     setSheet({
       kind: "confirm",
-      title: keys.length === 1 ? `Delete ${keys[0]}?` : `Delete ${keys.length} variables?`,
-      message: `Removed from ${env?.name}. This can't be undone.`,
-      action: "Delete",
+      title: keys.length === 1 ? `Delete “${keys[0]}”?` : `Delete ${keys.length} variables?`,
+      message: `${keys.length === 1 ? "It's" : "They're"} removed from ${env?.name}. Earlier values stay in history. This can't be undone.`,
+      action: keys.length === 1 ? "Delete Variable" : "Delete Variables",
       onConfirm: async () => {
         await run(api.deleteSecrets(ids));
         if (project && env) {
@@ -202,15 +247,32 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = isMac ? e.metaKey : e.ctrlKey;
-      if (sheet) return;
+      // Locking always works, even with a dialog or menu open.
       if (mod && e.shiftKey && e.key.toLowerCase() === "l") { e.preventDefault(); onLock(); return; }
+      if (sheet || menu) return;
+      const target = e.target as HTMLElement | null;
+      const typing = !!target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
       if (!mod) {
-        const typing = (e.target as HTMLElement)?.tagName === "INPUT";
-        if (!typing && (e.key === "Delete" || e.key === "Backspace") && selection.size && !readOnly) askDelete([...selection]);
+        if (typing) return;
+        const ordered = filtered;
+        const idx = ordered.findIndex((s) => selection.has(s.id));
+        if ((e.key === "Delete" || e.key === "Backspace") && selection.size && !readOnly) { e.preventDefault(); askDelete([...selection]); }
+        else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && ordered.length) {
+          e.preventDefault();
+          const next = ordered[Math.min(Math.max(idx + (e.key === "ArrowDown" ? 1 : -1), 0), ordered.length - 1)];
+          setSelection(new Set([next.id]));
+          document.querySelector<HTMLElement>(`[data-row="${next.id}"]`)?.focus();
+        } else if (e.key === "Enter" && idx >= 0 && !readOnly) { e.preventDefault(); setSheet({ kind: "editor", secret: ordered[idx] }); }
+        else if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && idx >= 0) {
+          e.preventDefault();
+          const r = document.querySelector(`[data-row="${ordered[idx].id}"]`)?.getBoundingClientRect();
+          openRowMenu(ordered[idx], r ? r.left + 40 : 200, r ? r.bottom : 200);
+        }
         return;
       }
       const k = e.key.toLowerCase();
       if (k === "f") { e.preventDefault(); searchRef.current?.focus(); }
+      if (k === "n" && e.shiftKey) { e.preventDefault(); setSheet({ kind: "newProject" }); return; }
       if (!env) return;
       if (k === "n" && !readOnly) { e.preventDefault(); setSheet({ kind: "editor", secret: null }); }
       if (k === "i" && !readOnly) { e.preventDefault(); setSheet({ kind: "import" }); }
@@ -232,6 +294,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
           {projects.length === 0 ? (
             <EmptyState icon={<Folder size={32} />} title="No projects" text="A project holds the environments and variables for one app.">
               <Button variant="primary" onClick={() => setSheet({ kind: "newProject" })}>New Project</Button>
+              <Button onClick={() => setSheet({ kind: "join", link: "" })}>Join Shared Project</Button>
             </EmptyState>
           ) : (
             projects.map((p) => (
@@ -255,7 +318,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                             title: `Delete “${p.name}”?`,
                             message: sharedIds.includes(p.id)
                               ? "This project is shared. Deleting it here stops syncing it and removes it from this computer. This can't be undone."
-                              : "All environments and variables in this project are deleted. This can't be undone.",
+                              : "All of its environments and variables are deleted too. This can't be undone.",
                             action: "Delete Project",
                             onConfirm: async () => { await run(api.deleteProject(p.id)); await run(loadProjects()); },
                           }),
@@ -263,6 +326,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                     ],
                   });
                 }}
+                aria-current={p.id === projectId ? "true" : undefined}
                 className={`mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] ${p.id === projectId ? "bg-raised" : "hover:bg-raised/50"}`}
               >
                 {sharedIds.includes(p.id) ? <Users size={16} className="shrink-0 text-accent" /> : <Folder size={16} className="shrink-0 text-accent" />}
@@ -292,8 +356,21 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
             </div>
             <div className="flex-1 overflow-auto border-t border-line px-2 pt-2">
               {envs.length === 0 ? (
-                <EmptyState icon={<Layers size={30} />} title="No environments" text="Keep separate values for development, staging and production.">
-                  {!readOnly && <Button variant="primary" onClick={() => setSheet({ kind: "newEnv" })}>New Environment</Button>}
+                <EmptyState icon={<Layers size={30} />} title="No environments" text="Environments keep separate values for development, staging and production.">
+                  {!readOnly && (
+                    <>
+                      <Button
+                        variant="primary"
+                        onClick={async () => {
+                          for (const name of ["development", "staging", "production"]) await run(api.createEnvironment(project.id, name));
+                          await run(loadEnvs(project.id));
+                        }}
+                      >
+                        Add Defaults
+                      </Button>
+                      <Button onClick={() => setSheet({ kind: "newEnv" })}>New Environment</Button>
+                    </>
+                  )}
                 </EmptyState>
               ) : (
                 envs.map((e) => (
@@ -331,6 +408,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                         ],
                       });
                     }}
+                    aria-current={e.id === envId ? "true" : undefined}
                     className={`mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] ${e.id === envId ? "bg-accent text-white" : "hover:bg-raised/50"}`}
                   >
                     <EnvIcon name={e.name} active={e.id === envId} />
@@ -391,7 +469,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                   {!readOnly && (
                     <>
                       <Button variant="primary" onClick={() => setSheet({ kind: "editor", secret: null })}>Add Variable</Button>
-                      <Button onClick={() => setSheet({ kind: "import" })}>Import…</Button>
+                      <Button onClick={() => setSheet({ kind: "import" })}>Import</Button>
                     </>
                   )}
                 </EmptyState>
@@ -422,20 +500,13 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                           onDoubleClick={() => !readOnly && setSheet({ kind: "editor", secret: s })}
                           onContextMenu={(e) => {
                             e.preventDefault();
-                            const ids = selection.has(s.id) ? [...selection] : [s.id];
-                            if (!selection.has(s.id)) setSelection(new Set([s.id]));
-                            const single: MenuItem[] = ids.length === 1 ? [
-                              ...(readOnly ? [] : [{ label: "Edit…", onClick: () => setSheet({ kind: "editor", secret: s }) }]),
-                              { label: "Copy Value", onClick: () => copyValue(s) },
-                              { label: "Copy Key", onClick: () => run(api.copyText(s.key, false)) },
-                              { label: "History…", onClick: () => setSheet({ kind: "history", secret: s }) },
-                              ...(s.isSecret ? [{ label: revealed[s.id] !== undefined ? "Hide Value" : "Reveal Value", onClick: () => toggleReveal(s) }] : []),
-                              ...(readOnly ? [] : [{ label: s.isSecret ? "Mark as Plain" : "Mark as Secret", onClick: () => toggleKind(s) }]),
-                            ] : [];
-                            const del: MenuItem[] = readOnly ? [] : [{ label: ids.length > 1 ? `Delete ${ids.length} Variables…` : "Delete…", danger: true, onClick: () => askDelete(ids) }];
-                            setMenu({ at: { x: e.clientX, y: e.clientY }, items: [...single, ...(single.length && del.length ? (["divider"] as MenuItem[]) : []), ...del] });
+                            openRowMenu(s, e.clientX, e.clientY);
                           }}
-                          className={`group h-9 border-b border-line/60 ${selected ? "bg-accent/25" : "hover:bg-raised/40"}`}
+                          data-row={s.id}
+                          tabIndex={0}
+                          aria-selected={selected}
+                          onFocus={() => !selection.has(s.id) && setSelection(new Set([s.id]))}
+                          className={`group h-9 border-b border-line/60 outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${selected ? "bg-accent/25" : "hover:bg-raised/40"}`}
                         >
                           <td className="truncate pl-4">
                             <span className="inline-flex max-w-full items-center gap-2">
@@ -473,7 +544,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
               </span>
               <span className="flex-1" />
               {selection.size > 0 && !readOnly && (
-                <FooterButton title="Delete the selected variables" onClick={() => askDelete([...selection])}><Trash2 size={15} /> Delete</FooterButton>
+                <FooterButton title="Delete the selected variables" onClick={() => askDelete([...selection])}><Trash2 size={15} /> Delete…</FooterButton>
               )}
             </ColumnFooter>
           </>
@@ -504,18 +575,18 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
           <NewProjectSheet
             onClose={close}
             onCreate={async (name, withDefaults) => {
-              const p = await run(api.createProject(name, withDefaults));
+              const p = await api.createProject(name, withDefaults);
               await run(loadProjects());
               if (p) setProjectId(p.id);
             }}
           />
         );
       case "renameProject":
-        return <NameSheet title="Rename Project" initial={sheet.project.name} action="Rename" onClose={close} onSubmit={async (n) => { await run(api.renameProject(sheet.project.id, n)); await run(loadProjects()); }} />;
+        return <NameSheet title="Rename Project" initial={sheet.project.name} action="Rename" onClose={close} onSubmit={async (n) => { await api.renameProject(sheet.project.id, n); await run(loadProjects()); }} />;
       case "newEnv":
-        return project && <NameSheet title="New Environment" placeholder="e.g. qa, preview, feature-x" action="Create" onClose={close} onSubmit={async (n) => { const e = await run(api.createEnvironment(project.id, n)); await run(loadEnvs(project.id)); if (e) setEnvId(e.id); }} />;
+        return project && <NameSheet title="New Environment" placeholder="e.g. qa, preview, feature-x" action="Create" onClose={close} onSubmit={async (n) => { const e = await api.createEnvironment(project.id, n); await run(loadEnvs(project.id)); setEnvId(e.id); }} />;
       case "renameEnv":
-        return project && <NameSheet title="Rename Environment" initial={sheet.env.name} action="Rename" onClose={close} onSubmit={async (n) => { await run(api.renameEnvironment(sheet.env.id, n)); await run(loadEnvs(project.id)); }} />;
+        return project && <NameSheet title="Rename Environment" initial={sheet.env.name} action="Rename" onClose={close} onSubmit={async (n) => { await api.renameEnvironment(sheet.env.id, n); await run(loadEnvs(project.id)); }} />;
       case "cloneEnv":
         return project && (
           <NameSheet
@@ -524,7 +595,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
             action="Clone"
             note={`Copies all ${plural(sheet.env.secretCount, "variable")}, values included.`}
             onClose={close}
-            onSubmit={async (n) => { const e = await run(api.cloneEnvironment(sheet.env.id, n)); await run(loadEnvs(project.id)); if (e) setEnvId(e.id); }}
+            onSubmit={async (n) => { const e = await api.cloneEnvironment(sheet.env.id, n); await run(loadEnvs(project.id)); setEnvId(e.id); }}
           />
         );
       case "editor":

@@ -88,6 +88,7 @@ export const api = {
   setMemberLevel: (projectId: string, peerId: string, level: string) => invoke<void>("set_member_level", { projectId, peerId, level }),
   syncStatus: (projectId: string) => invoke<SyncStatus>("sync_status", { projectId }),
   syncRevision: () => invoke<number>("sync_revision"),
+  expiringVariables: (days: number) => invoke<{ id: string; label: string; expired: boolean }[]>("expiring_variables", { days }),
   stopSharing: (projectId: string) => invoke<void>("stop_sharing", { projectId }),
 };
 
@@ -108,4 +109,4 @@ export const formatDate = (unixSeconds: number) =>
   new Date(unixSeconds * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 export const levelLabel = (level: string) =>
-  ({ owner: "Owner", editor: "Can edit", viewer: "Can view", pending: "Joining…" } as Record<string, string>)[level] ?? level;
+  ({ owner: "Owner", editor: "Can edit", viewer: "Can view", pending: "Waiting for owner" } as Record<string, string>)[level] ?? level;

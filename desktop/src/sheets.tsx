@@ -5,7 +5,7 @@ import {
   api, errorText, formatDate, plural, relativeTime,
   Activity, DiffRow, Environment, ExportFormat, ImportSummary, Project, Secret, Version,
 } from "./api";
-import { Button, ErrorLine, IconButton, Modal, Segmented, TextInput, Toggle } from "./ui";
+import { Button, Confirm, EmptyValue, ErrorLine, IconButton, MASK, Modal, SHEET, Segmented, TextInput, Toggle } from "./ui";
 
 // ── Name prompts ──────────────────────────────────────────────────────────────
 
@@ -15,25 +15,38 @@ export function NameSheet({ title, initial = "", placeholder, action, note, onSu
   placeholder?: string;
   action: string;
   note?: string;
-  onSubmit: (name: string) => Promise<void> | void;
+  /** Throw to keep the sheet open and show the error in it. */
+  onSubmit: (name: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const trimmed = name.trim();
   const submit = async () => {
-    if (!trimmed) return;
-    await onSubmit(trimmed);
-    onClose();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSubmit(trimmed);
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal
       title={title}
       onClose={onClose}
-      width={380}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!trimmed} onClick={submit}>{action}</Button></>}
+      width={SHEET.small}
+      onEnter={submit}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!trimmed || busy} onClick={submit}>{action}</Button></>}
     >
-      <TextInput autoFocus placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+      <TextInput autoFocus placeholder={placeholder} value={name} onChange={(e) => setName(e.target.value)} />
       {note && <p className="mt-2 text-xs text-muted">{note}</p>}
+      <ErrorLine text={error} />
     </Modal>
   );
 }
@@ -41,23 +54,35 @@ export function NameSheet({ title, initial = "", placeholder, action, note, onSu
 export function NewProjectSheet({ onCreate, onClose }: { onCreate: (name: string, withDefaults: boolean) => Promise<void>; onClose: () => void }) {
   const [name, setName] = useState("");
   const [withDefaults, setWithDefaults] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const trimmed = name.trim();
   const submit = async () => {
-    if (!trimmed) return;
-    await onCreate(trimmed, withDefaults);
-    onClose();
+    if (!trimmed || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onCreate(trimmed, withDefaults);
+      onClose();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <Modal
       title="New Project"
       onClose={onClose}
-      width={420}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!trimmed} onClick={submit}>Create</Button></>}
+      width={SHEET.small}
+      onEnter={submit}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!trimmed || busy} onClick={submit}>Create</Button></>}
     >
-      <TextInput autoFocus placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+      <TextInput autoFocus placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
       <div className="mt-4">
-        <Toggle checked={withDefaults} onChange={setWithDefaults} label="Create development, staging and production" />
+        <Toggle checked={withDefaults} onChange={setWithDefaults} label="Add development, staging and production" />
       </div>
+      <ErrorLine text={error} />
     </Modal>
   );
 }
@@ -94,9 +119,15 @@ export function VariableEditor({ projectId, envId, secret, onSaved, onClose }: {
     if (!secret && !kindTouched) api.looksSecret(key).then(setIsSecret);
   }, [key, secret, kindTouched]);
 
+  const [busy, setBusy] = useState(false);
   const save = async () => {
+    if (busy || !key || !validKey) return;
+    setBusy(true);
     setError(null);
-    const newExpiry = expires ? fromDateInput(expiry) : null;
+    // Compare by calendar day: re-saving an unchanged date must not rewrite the expiry.
+    const originalDay = secret?.expiresAt != null ? toDateInput(secret.expiresAt) : null;
+    const expiryChanged = (expires ? expiry : null) !== originalDay;
+    const newExpiry = expires ? (expiryChanged ? fromDateInput(expiry) : secret?.expiresAt ?? fromDateInput(expiry)) : null;
     try {
       if (secret) {
         await api.editSecret({
@@ -105,7 +136,7 @@ export function VariableEditor({ projectId, envId, secret, onSaved, onClose }: {
           newKey: key === secret.key ? null : key,
           newValue: value === original ? null : value,
           isSecret: isSecret === secret.isSecret ? null : isSecret,
-          expiryChanged: newExpiry !== secret.expiresAt,
+          expiryChanged,
           expiresAt: newExpiry,
         });
       } else {
@@ -115,6 +146,8 @@ export function VariableEditor({ projectId, envId, secret, onSaved, onClose }: {
       onClose();
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -123,8 +156,9 @@ export function VariableEditor({ projectId, envId, secret, onSaved, onClose }: {
     <Modal
       title={secret ? "Edit Variable" : "Add Variable"}
       onClose={onClose}
-      width={480}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!key || !validKey} onClick={save}>{secret ? "Save" : "Add"}</Button></>}
+      width={SHEET.medium}
+      onEnter={save}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!key || !validKey || busy} onClick={save}>{secret ? "Save" : "Add"}</Button></>}
     >
       <label className="mb-1 block text-xs text-muted">Key</label>
       <TextInput mono autoFocus placeholder="API_KEY" value={key} onChange={(e) => setKey(e.target.value)} />
@@ -225,13 +259,13 @@ export function ImportSheet({ projectId, env, onDone, onClose }: {
 
   return (
     <Modal
-      title={`Import into ${env.name}`}
+      title={`Import into “${env.name}”`}
       onClose={onClose}
-      width={680}
+      width={SHEET.large}
       footer={
         drafts ? (
           <>
-            <Button variant="ghost" onClick={() => setDrafts(null)} className="mr-auto">Back</Button>
+            <Button onClick={() => setDrafts(null)} className="mr-auto">Back</Button>
             <Button onClick={onClose}>Cancel</Button>
             <Button variant="primary" disabled={!counted.length} onClick={apply}>Import {plural(counted.length, "Variable")}</Button>
           </>
@@ -270,7 +304,10 @@ export function ImportSheet({ projectId, env, onDone, onClose }: {
             <span className="font-medium text-muted">{drafts.filter((d) => d.isSecret).length} secret</span>
             <span className="flex-1" />
             {drafts.some((d) => d.exists) && (
-              <Segmented value={overwrite ? "overwrite" : "skip"} onChange={(v) => setOverwrite(v === "overwrite")} options={[{ value: "skip", label: "Skip existing" }, { value: "overwrite", label: "Overwrite" }]} />
+              <span className="flex items-center gap-2">
+                <span className="text-muted">Existing:</span>
+                <Segmented value={overwrite ? "overwrite" : "skip"} onChange={(v) => setOverwrite(v === "overwrite")} options={[{ value: "skip", label: "Skip" }, { value: "overwrite", label: "Overwrite" }]} />
+              </span>
             )}
           </div>
           <table className="w-full table-fixed text-left">
@@ -288,7 +325,7 @@ export function ImportSheet({ projectId, env, onDone, onClose }: {
                 <tr key={d.key} className="h-8 border-b border-line/60">
                   <td><input type="checkbox" disabled={!d.valid} checked={d.include} onChange={(e) => update(i, { include: e.target.checked })} /></td>
                   <td className="truncate pr-2 font-mono">{d.key}</td>
-                  <td className={`truncate pr-2 font-mono ${d.isSecret ? "text-muted" : ""}`}>{d.isSecret ? "•".repeat(Math.min(Math.max(d.value.length, 4), 12)) : d.value}</td>
+                  <td className={`truncate pr-2 font-mono ${d.isSecret ? "text-muted" : ""}`}>{d.isSecret ? MASK : d.value === "" ? <EmptyValue /> : d.value}</td>
                   <td className={`text-xs font-medium ${d.exists ? "text-warn" : "text-ok"}`}>{d.exists ? (overwrite ? "Overwrite" : "Skip") : "New"}</td>
                   <td><input type="checkbox" checked={d.isSecret} onChange={(e) => update(i, { isSecret: e.target.checked })} /></td>
                 </tr>
@@ -333,9 +370,13 @@ export function ExportSheet({ project, env, secrets, onSaved, onClose }: {
 
   useEffect(() => {
     if (!selected.size) { setPreview(""); return; }
+    // An older response must never replace a newer one: Save writes whatever is previewed.
+    let current = true;
+    setPreview("");
     api.exportVariables({ projectId: project.id, envId: env.id, format, keys: [...selected], includeSecretValues: withValues, name: name || project.name })
-      .then((p) => { setPreview(p); setError(null); })
-      .catch((e) => setError(errorText(e)));
+      .then((p) => { if (current) { setPreview(p); setError(null); } })
+      .catch((e) => { if (current) setError(errorText(e)); });
+    return () => { current = false; };
   }, [format, withValues, selected, name, project, env]);
 
   const saveFile = async () => {
@@ -353,13 +394,26 @@ export function ExportSheet({ project, env, secrets, onSaved, onClose }: {
   const hasSecretValues = withValues && secrets.some((s) => s.isSecret && selected.has(s.key));
   return (
     <Modal
-      title={`Export ${env.name}`}
+      title={`Export “${env.name}”`}
       onClose={onClose}
-      width={800}
+      width={SHEET.wide}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button disabled={!preview} onClick={async () => { await api.copyText(preview, withValues); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>{copied ? "Copied" : "Copy"}</Button>
+          <Button onClick={onClose}>Close</Button>
+          <Button
+            disabled={!preview}
+            onClick={async () => {
+              try {
+                await api.copyText(preview, withValues);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              } catch (e) {
+                setError(errorText(e));
+              }
+            }}
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
           <Button variant="primary" disabled={!preview} onClick={saveFile}>Save…</Button>
         </>
       }
@@ -412,12 +466,18 @@ export function HistorySheet({ projectId, secret, readOnly, onRestored, onClose 
   onClose: () => void;
 }) {
   const [current, setCurrent] = useState("");
+  const [currentAt, setCurrentAt] = useState(secret.updatedAt);
   const [versions, setVersions] = useState<Version[]>([]);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [pendingRestore, setPendingRestore] = useState<Version | null>(null);
   const [error, setError] = useState<string | null>(null);
   const load = () =>
-    Promise.all([api.getValue(projectId, secret.id, false), api.listVersions(projectId, secret.id)])
-      .then(([c, v]) => { setCurrent(c); setVersions(v); })
+    Promise.all([api.getValue(projectId, secret.id, false), api.listVersions(projectId, secret.id), api.listSecrets(secret.envId)])
+      .then(([c, v, list]) => {
+        setCurrent(c);
+        setVersions(v);
+        setCurrentAt(list.find((x) => x.id === secret.id)?.updatedAt ?? secret.updatedAt);
+      })
       .catch((e) => setError(errorText(e)));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -426,27 +486,41 @@ export function HistorySheet({ projectId, secret, readOnly, onRestored, onClose 
     setRevealed((r) => { const n = new Set(r); n.has(id) ? n.delete(id) : n.add(id); return n; });
     if (!revealed.has(id)) api.getValue(projectId, secret.id, true).catch(() => {});
   };
+  const restore = async (v: Version) => {
+    try {
+      await api.restoreVersion(projectId, secret.id, v.id);
+      onRestored();
+      await load();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
   const row = (id: string, value: string, caption: string, version?: Version) => (
     <div key={id} className="flex items-center gap-2 border-b border-line/60 py-2">
       <div className="min-w-0 flex-1">
-        <div className="selectable truncate font-mono">{show(id) ? value || "(empty)" : "••••••••••••"}</div>
+        <div className="selectable truncate font-mono">{!show(id) ? MASK : value === "" ? <EmptyValue /> : value}</div>
         <div className="text-xs text-muted">{caption}</div>
       </div>
-      {secret.isSecret && <IconButton title={show(id) ? "Hide" : "Reveal"} onClick={() => toggle(id)}>{show(id) ? <EyeOff size={15} /> : <Eye size={15} />}</IconButton>}
-      {version && !readOnly && (
-        <Button onClick={async () => {
-          try { await api.restoreVersion(projectId, secret.id, version.id); onRestored(); await load(); } catch (e) { setError(errorText(e)); }
-        }}>Restore</Button>
-      )}
+      {secret.isSecret && <IconButton title={show(id) ? "Hide value" : "Reveal value"} onClick={() => toggle(id)}>{show(id) ? <EyeOff size={15} /> : <Eye size={15} />}</IconButton>}
+      {version && !readOnly && <Button onClick={() => setPendingRestore(version)}>Restore…</Button>}
     </div>
   );
   return (
-    <Modal title="History" subtitle={secret.key} onClose={onClose} width={580} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
+    <Modal title="History" subtitle={secret.key} onClose={onClose} width={SHEET.medium} onEnter={onClose} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
       <p className="mb-1 text-xs font-semibold text-muted uppercase">Current</p>
-      {row("current", current, `Set ${formatDate(secret.updatedAt)}`)}
+      {row("current", current, `Set ${formatDate(currentAt)}`)}
       <p className="mt-4 mb-1 text-xs font-semibold text-muted uppercase">{versions.length ? "Earlier values" : "No earlier values"}</p>
       {versions.map((v) => row(v.id, v.value, `Replaced ${formatDate(v.changedAt)} by ${v.byMe ? "you" : "a teammate"}${v.note ? ` · ${v.note}` : ""}`, v))}
       <ErrorLine text={error} />
+      {pendingRestore && (
+        <Confirm
+          title="Restore this value?"
+          message="The current value is kept in history, so you can undo this."
+          action="Restore"
+          onConfirm={() => restore(pendingRestore)}
+          onClose={() => setPendingRestore(null)}
+        />
+      )}
     </Modal>
   );
 }
@@ -467,19 +541,22 @@ const ACTIONS: Record<string, string> = {
 export function ActivitySheet({ project, onClose }: { project: Project; onClose: () => void }) {
   const [entries, setEntries] = useState<Activity[]>([]);
   const [filter, setFilter] = useState("");
-  useEffect(() => { api.listActivity(project.id).then(setEntries).catch(() => {}); }, [project.id]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => { api.listActivity(project.id).then(setEntries).catch((e) => setLoadError(errorText(e))); }, [project.id]);
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return q ? entries.filter((a) => a.targetLabel.toLowerCase().includes(q) || (ACTIONS[a.action] ?? a.action).toLowerCase().includes(q)) : entries;
   }, [entries, filter]);
   return (
-    <Modal title="Activity" onClose={onClose} width={760} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
+    <Modal title="Activity" onClose={onClose} width={SHEET.wide} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
       <div className="mb-3 flex items-center justify-between">
         <p className="text-muted">{project.name} · kept on this computer only</p>
         <div className="w-52"><TextInput placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
       </div>
-      {shown.length === 0 ? (
-        <p className="py-10 text-center text-muted">No activity yet</p>
+      {loadError ? (
+        <p className="py-10 text-center text-danger">Couldn't load activity: {loadError}</p>
+      ) : shown.length === 0 ? (
+        <p className="py-10 text-center text-muted">{entries.length ? `No results for “${filter}”` : "No activity yet"}</p>
       ) : (
         <table className="w-full table-fixed text-left">
           <thead className="text-xs text-muted">
@@ -490,7 +567,7 @@ export function ActivitySheet({ project, onClose }: { project: Project; onClose:
               <tr key={a.id} className="h-8 border-b border-line/60">
                 <td className="text-muted" title={formatDate(a.timestamp)}>{relativeTime(a.timestamp)}</td>
                 <td>{ACTIONS[a.action] ?? a.action}</td>
-                <td className="truncate font-mono">{a.targetLabel}</td>
+                <td className="truncate font-mono" title={a.targetLabel}>{a.targetLabel}</td>
                 <td className="text-muted">{a.fromSync ? "Teammate (synced)" : a.byMe ? "You" : "Teammate"}</td>
               </tr>
             ))}
@@ -507,7 +584,7 @@ const STATUS: Record<DiffRow["status"], { label: string; cls: string }> = {
   same: { label: "Same", cls: "text-muted" },
   different: { label: "Different", cls: "text-warn" },
   only_left: { label: "Missing →", cls: "text-accent" },
-  only_right: { label: "← Missing", cls: "text-[#a371f7]" },
+  only_right: { label: "← Missing", cls: "text-violet" },
 };
 
 export function CompareSheet({ projectId, left, right, onClose }: { projectId: string; left: Environment; right: Environment; onClose: () => void }) {
@@ -519,17 +596,23 @@ export function CompareSheet({ projectId, left, right, onClose }: { projectId: s
   const shown = diffOnly ? rows.filter((r) => r.status !== "same") : rows;
   const count = (s: DiffRow["status"]) => rows.filter((r) => r.status === s).length;
   const cell = (v: string | null, secret: boolean) =>
-    v === null ? <span className="text-faint">—</span> : <span className={`truncate font-mono ${secret && !showSecrets ? "text-muted" : ""}`}>{secret && !showSecrets ? "••••••••" : v || "(empty)"}</span>;
+    v === null ? (
+      <span className="text-faint">—</span>
+    ) : (
+      <span className={`truncate font-mono ${secret && !showSecrets ? "text-muted" : ""}`}>
+        {secret && !showSecrets ? MASK : v === "" ? <EmptyValue /> : v}
+      </span>
+    );
   return (
-    <Modal title={`${left.name}  ↔  ${right.name}`} onClose={onClose} width={860} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
+    <Modal title={`${left.name}  ↔  ${right.name}`} onClose={onClose} width={SHEET.wide} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
       <div className="mb-3 flex items-center gap-4">
         <span className="text-warn">{count("different")} different</span>
         <span className="text-accent">{count("only_left")} only in {left.name}</span>
-        <span className="text-[#a371f7]">{count("only_right")} only in {right.name}</span>
+        <span className="text-violet">{count("only_right")} only in {right.name}</span>
         <span className="text-muted">{count("same")} same</span>
         <span className="flex-1" />
         <label className="flex items-center gap-1.5"><input type="checkbox" checked={diffOnly} onChange={(e) => setDiffOnly(e.target.checked)} /> Differences only</label>
-        <label className="flex items-center gap-1.5"><input type="checkbox" checked={showSecrets} onChange={(e) => setShowSecrets(e.target.checked)} /> Show secrets</label>
+        <label className="flex items-center gap-1.5"><input type="checkbox" checked={showSecrets} onChange={(e) => setShowSecrets(e.target.checked)} /> Show secret values</label>
       </div>
       {shown.length === 0 ? (
         <p className="py-10 text-center text-muted">{rows.length ? "No differences" : "Both environments are empty"}</p>

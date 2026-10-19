@@ -7,12 +7,14 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
   const [state, setState] = useState<VaultState | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [remember, setRemember] = useState(true);
+  // No Windows Hello prompt guards the saved password, so saving it is opt-in.
+  const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.vaultState().then(async (s) => {
+    api.vaultState().catch((e) => { setError(errorText(e)); return null; }).then(async (s) => {
+      if (!s) return;
       setState(s);
       if (s.devPassword) {
         await api.devUnlock().then(onUnlocked).catch((e) => setError(errorText(e)));
@@ -46,7 +48,11 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
     }
   };
 
-  if (!state) return null;
+  if (!state) {
+    return error ? (
+      <div className="flex h-full items-center justify-center p-8 text-center text-danger">Couldn't open Yasecret: {error}</div>
+    ) : null;
+  }
   const firstRun = state.firstRun;
   return (
     <div className="flex h-full items-center justify-center">
@@ -65,9 +71,19 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
           {busy ? "Unlocking…" : firstRun ? "Create Vault" : "Unlock"}
         </Button>
         {state.hasRemembered && !firstRun && (
-          <Button variant="ghost" onClick={useSaved} disabled={busy}>
-            Unlock with saved password
-          </Button>
+          <div className="flex gap-1">
+            <Button variant="ghost" onClick={useSaved} disabled={busy}>Unlock with saved password</Button>
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={async () => {
+                await api.forgetPassword().catch(() => {});
+                setState({ ...state, hasRemembered: false });
+              }}
+            >
+              Forget it
+            </Button>
+          </div>
         )}
       </form>
     </div>

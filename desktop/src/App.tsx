@@ -12,7 +12,8 @@ export default function App() {
   const [joinLink, setJoinLink] = useState<string | null>(null);
 
   useEffect(() => {
-    api.vaultState().then((s) => setUnlocked(s.unlocked));
+    // A failure here still shows the unlock screen, which reports the error itself.
+    api.vaultState().then((s) => setUnlocked(s.unlocked)).catch(() => setUnlocked(false));
     getCurrent().then((urls) => urls?.[0] && setJoinLink(urls[0])).catch(() => {});
     const off = listen<string>("join-link", (e) => setJoinLink(e.payload));
     return () => { off.then((f) => f()); };

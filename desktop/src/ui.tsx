@@ -4,16 +4,19 @@ import { X } from "lucide-react";
 type ButtonProps = {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  /** danger: quiet red trigger that opens a confirmation; destructive: the confirming red button. */
+  variant?: "primary" | "secondary" | "ghost" | "danger" | "destructive";
+  autoFocus?: boolean;
   disabled?: boolean;
   title?: string;
   type?: "button" | "submit";
   className?: string;
 };
 
-export function Button({ children, onClick, variant = "secondary", disabled, title, type = "button", className = "" }: ButtonProps) {
+export function Button({ children, onClick, variant = "secondary", disabled, title, type = "button", className = "", autoFocus }: ButtonProps) {
   const styles = {
     primary: "bg-accent text-accent-fg hover:brightness-110",
+    destructive: "bg-danger text-white hover:brightness-110",
     secondary: "bg-raised hover:brightness-110",
     ghost: "text-muted hover:text-fg hover:bg-raised",
     danger: "text-danger hover:bg-danger/10",
@@ -23,6 +26,7 @@ export function Button({ children, onClick, variant = "secondary", disabled, tit
       type={type}
       title={title}
       disabled={disabled}
+      autoFocus={autoFocus}
       onClick={onClick}
       className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md px-3 transition-colors disabled:pointer-events-none disabled:opacity-40 ${styles} ${className}`}
     >
@@ -96,34 +100,87 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
   );
 }
 
-export function Modal({ title, subtitle, onClose, children, width = 460, footer }: {
+/** Dialog widths shared by every sheet (same tiers as the macOS app). */
+export const SHEET = { small: 400, medium: 500, large: 640, wide: 820 } as const;
+
+/** Masked values look identical everywhere and don't hint at their length. */
+export const MASK = "••••••••••••";
+
+// Open dialogs, innermost last: only the top one reacts to Escape and Enter.
+const dialogStack: symbol[] = [];
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function Modal({ title, subtitle, onClose, children, width = SHEET.medium, footer, onEnter, dismissible = true }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: ReactNode;
   width?: number;
   footer?: ReactNode;
+  /** Runs on Enter (outside text areas), like a default button. */
+  onEnter?: () => void;
+  /** False while busy: Escape and backdrop clicks do nothing. */
+  dismissible?: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const latest = useRef({ onClose, onEnter, dismissible });
+  latest.current = { onClose, onEnter, dismissible };
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    const id = Symbol(title);
+    dialogStack.push(id);
+    const previous = document.activeElement as HTMLElement | null;
+    const box = ref.current;
+    if (box && !box.contains(document.activeElement)) {
+      (box.querySelector<HTMLElement>("[autofocus]") ?? box.querySelector<HTMLElement>(FOCUSABLE) ?? box).focus();
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (dialogStack[dialogStack.length - 1] !== id) return;
+      const { onClose, onEnter, dismissible } = latest.current;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (dismissible) onClose();
+      } else if (e.key === "Enter" && onEnter) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag !== "TEXTAREA" && tag !== "BUTTON" && tag !== "SELECT") {
+          e.preventDefault();
+          onEnter();
+        }
+      } else if (e.key === "Tab" && box) {
+        // Keep keyboard focus inside the dialog.
+        const items = [...box.querySelectorAll<HTMLElement>(FOCUSABLE)];
+        if (!items.length) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      dialogStack.splice(dialogStack.indexOf(id), 1);
+      previous?.focus?.();
+    };
+  }, [title]);
+
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40" onMouseDown={() => dismissible && onClose()}>
       <div
+        ref={ref}
         role="dialog"
+        aria-modal="true"
         aria-label={title}
-        className="flex max-h-[85vh] flex-col rounded-xl border border-line bg-panel shadow-2xl"
+        tabIndex={-1}
+        className="flex max-h-[85vh] flex-col rounded-xl border border-line bg-panel shadow-2xl outline-none"
         style={{ width }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-3">
-          <div>
-            <h2 className="text-[17px] font-semibold">{title}</h2>
-            {subtitle && <p className="mt-0.5 font-mono text-xs text-muted">{subtitle}</p>}
+          <div className="min-w-0">
+            <h2 className="truncate text-[17px] font-semibold">{title}</h2>
+            {subtitle && <p className="mt-0.5 truncate font-mono text-xs text-muted">{subtitle}</p>}
           </div>
-          <IconButton title="Close" onClick={onClose}>
+          <IconButton title="Close" onClick={onClose} disabled={!dismissible}>
             <X size={16} />
           </IconButton>
         </div>
@@ -141,23 +198,28 @@ export function Confirm({ title, message, action, onConfirm, onClose }: {
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const confirm = () => { onConfirm(); onClose(); };
   return (
     <Modal
       title={title}
       onClose={onClose}
-      width={400}
+      width={SHEET.small}
+      onEnter={confirm}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" className="!bg-danger" onClick={() => { onConfirm(); onClose(); }}>
-            {action}
-          </Button>
+          <Button variant="destructive" autoFocus onClick={confirm}>{action}</Button>
         </>
       }
     >
       <p className="text-muted">{message}</p>
     </Modal>
   );
+}
+
+/** "empty" in italics, the same wherever a value can be blank. */
+export function EmptyValue() {
+  return <span className="text-faint italic">empty</span>;
 }
 
 export type MenuItem = { label: string; onClick: () => void; danger?: boolean } | "divider";
@@ -173,11 +235,16 @@ export function ContextMenu({ at, items, onClose }: { at: { x: number; y: number
       setPos({ x: Math.min(at.x, innerWidth - el.offsetWidth - 8), y: Math.min(at.y, innerHeight - el.offsetHeight - 8) });
     }
     const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+    };
     window.addEventListener("mousedown", close);
     window.addEventListener("blur", close);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("mousedown", close);
       window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", onKey, true);
     };
   }, [at, onClose]);
   return (
@@ -243,5 +310,5 @@ export function EmptyState({ icon, title, text, children }: { icon: ReactNode; t
 }
 
 export function ErrorLine({ text }: { text: string | null }) {
-  return text ? <p className="mt-3 text-[13px] text-danger">{text}</p> : null;
+  return text ? <p role="alert" className="mt-3 text-[13px] text-danger">{text}</p> : null;
 }

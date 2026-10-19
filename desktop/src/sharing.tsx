@@ -1,25 +1,38 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Crown, Radio, User } from "lucide-react";
 import { api, errorText, levelLabel, relativeTime, Member, Project, SyncStatus } from "./api";
-import { Button, Confirm, ErrorLine, Modal, Segmented, TextInput } from "./ui";
+import { Button, Confirm, ErrorLine, Modal, SHEET, Segmented, TextInput } from "./ui";
 
 export function sharingSummary(status: SyncStatus | null, members: Member[]): string | null {
   if (!status?.shared) return null;
-  const parts = [
-    ({ owner: "Shared", viewer: "View only", pending: "Waiting for the owner" } as Record<string, string>)[status.myLevel] ?? "Shared",
-  ];
+  const parts = [({ viewer: "View only", pending: "Waiting for owner" } as Record<string, string>)[status.myLevel] ?? "Shared"];
   const others = Math.max(members.length - 1, 0);
-  if (others) parts.push(`${others} member${others === 1 ? "" : "s"}`);
-  parts.push(status.peersOnline > 0 ? `${status.peersOnline} online` : "offline");
+  if (others === 0) {
+    parts.push(status.isOwner ? "no one has joined" : "connecting");
+  } else {
+    parts.push(`${others} member${others === 1 ? "" : "s"}`);
+    parts.push(status.peersOnline > 0 ? `${status.peersOnline} online` : "none online");
+  }
   return parts.join(" · ");
 }
 
-function CopyBox({ text, sensitive }: { text: string; sensitive: boolean }) {
+function CopyBox({ text, copyValue, sensitive, onError }: { text: string; copyValue?: string; sensitive: boolean; onError: (e: string) => void }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="flex items-start gap-2 rounded-lg bg-field p-2.5">
       <code className="selectable line-clamp-3 min-w-0 flex-1 font-mono text-xs break-all">{text}</code>
-      <Button onClick={async () => { await api.copyText(text, sensitive); setCopied(true); setTimeout(() => setCopied(false), 2000); }}>
+      <Button
+        disabled={!text}
+        onClick={async () => {
+          try {
+            await api.copyText(copyValue ?? text, sensitive);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch (e) {
+            onError(errorText(e));
+          }
+        }}
+      >
         {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
       </Button>
     </div>
@@ -41,6 +54,7 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<Member | null>(null);
   const shared = status?.shared ?? false;
   const isOwner = !shared || (status?.isOwner ?? false);
   const cleaned = code.replace(/\s+/g, "");
@@ -76,7 +90,8 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
     <Modal
       title={`Share “${project.name}”`}
       onClose={onClose}
-      width={580}
+      width={SHEET.large}
+      onEnter={isOwner && !link ? create : onClose}
       footer={
         <>
           {shared && <Button variant="danger" className="mr-auto" onClick={() => setConfirmStop(true)}>{isOwner ? "Stop Sharing…" : "Leave Project…"}</Button>}
@@ -103,7 +118,7 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
           </div>
           {link && (
             <>
-              <CopyBox text={link} sensitive={mode === "link"} />
+              <CopyBox text={link} sensitive={mode === "link"} onError={setError} />
               <p className="flex items-center gap-1.5 text-xs text-muted"><Radio size={13} /> Keep Yasecret open and unlocked until they've joined. Devices sync directly, with no server in between.</p>
             </>
           )}
@@ -124,10 +139,15 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
                 <div className="text-xs text-muted">Joined {relativeTime(m.joinedAt)}</div>
               </div>
               {isOwner && !m.isMe && m.level !== "owner" && m.level !== "pending" ? (
-                <select value={m.level} onChange={(e) => setLevel(m, e.target.value)} className="h-7 rounded-md border border-line bg-field px-2">
+                <select
+                  value={m.level}
+                  aria-label={`Access for ${m.name}`}
+                  onChange={(e) => (e.target.value === "removed" ? setPendingRemoval(m) : setLevel(m, e.target.value))}
+                  className="h-7 rounded-md border border-line bg-field px-2"
+                >
                   <option value="editor">Can edit</option>
                   <option value="viewer">Can view</option>
-                  <option value="removed">Remove</option>
+                  <option value="removed">Remove…</option>
                 </select>
               ) : (
                 <span className="text-muted">{levelLabel(m.level)}</span>
@@ -140,6 +160,15 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
         </div>
       )}
       <ErrorLine text={error} />
+      {pendingRemoval && (
+        <Confirm
+          title={`Remove ${pendingRemoval.name}?`}
+          message="The project key is replaced and handed to everyone else, so they can't read anything changed afterwards."
+          action="Remove"
+          onConfirm={() => setLevel(pendingRemoval, "removed")}
+          onClose={() => setPendingRemoval(null)}
+        />
+      )}
       {confirmStop && (
         <Confirm
           title={isOwner ? `Stop sharing “${project.name}”?` : `Leave “${project.name}”?`}
@@ -168,9 +197,12 @@ export function JoinSheet({ initialLink, onJoined, onClose }: { initialLink: str
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { api.deviceCode().then(setCode).catch(() => {}); }, []);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  useEffect(() => { api.deviceCode().then(setCode).catch((e) => setCodeError(errorText(e))); }, []);
   const trimmed = link.trim();
+  const canJoin = !busy && trimmed.startsWith("yasecret://join");
   const join = async () => {
+    if (!canJoin) return;
     setBusy(true);
     setError(null);
     try {
@@ -187,12 +219,14 @@ export function JoinSheet({ initialLink, onJoined, onClose }: { initialLink: str
     <Modal
       title="Join a Shared Project"
       onClose={onClose}
-      width={540}
+      width={SHEET.medium}
+      dismissible={!busy}
+      onEnter={join}
       footer={
         <>
           {busy && <span className="mr-auto text-muted">Connecting to the owner's computer…</span>}
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={busy || !trimmed.startsWith("yasecret://join")} onClick={join}>Join</Button>
+          <Button onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="primary" disabled={!canJoin} onClick={join}>Join</Button>
         </>
       }
     >
@@ -206,7 +240,11 @@ export function JoinSheet({ initialLink, onJoined, onClose }: { initialLink: str
       />
       <div className="mt-4 rounded-lg border border-line p-3">
         <p className="mb-2">Asked for a device code? Send this to the project owner:</p>
-        <CopyBox text={code.match(/.{1,8}/g)?.join(" ") ?? ""} sensitive={false} />
+        {code ? (
+          <CopyBox text={code.match(/.{1,8}/g)?.join(" ") ?? ""} copyValue={code} sensitive={false} onError={setError} />
+        ) : (
+          <p className="text-muted">Unavailable — {codeError ?? "unlock the vault first"}</p>
+        )}
       </div>
       <ErrorLine text={error} />
     </Modal>
