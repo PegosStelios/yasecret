@@ -33,7 +33,10 @@ struct MainView: View {
             }
         }
         .frame(minWidth: 1040, minHeight: 560)
-        .sheet(isPresented: $showingShare) {
+        .sheet(isPresented: $showingShare, onDismiss: {
+            // Sharing may have started or stopped: refresh the sidebar's shared icons.
+            if let session = appState.session { projectsVM.load(session: session) }
+        }) {
             if let proj = selectedProject, let session = appState.session {
                 ShareSheet(projectId: proj.id, projectName: proj.name, session: session, sharing: sharingVM) {
                     projectsVM.load(session: session)
@@ -44,7 +47,7 @@ struct MainView: View {
         .task(id: projectsVM.selectedProjectId) {
             while !Task.isCancelled {
                 if let pid = projectsVM.selectedProjectId, let session = appState.session {
-                    sharingVM.refresh(projectId: pid, session: session)
+                    await sharingVM.refresh(projectId: pid, session: session)
                 } else {
                     sharingVM.clear()
                 }
@@ -87,7 +90,7 @@ struct MainView: View {
         projectsVM.load(session: session)
         guard let pid = projectsVM.selectedProjectId else { return }
         envsVM.load(projectId: pid, session: session)
-        sharingVM.refresh(projectId: pid, session: session)
+        Task { await sharingVM.refresh(projectId: pid, session: session) }
         if let eid = envsVM.selectedEnvId { secretsVM.load(envId: eid, session: session) }
     }
 

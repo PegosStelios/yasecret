@@ -8,6 +8,7 @@ struct ActivitySheet: View {
 
     @State private var entries: [FfiActivity] = []
     @State private var filter = ""
+    @State private var loadError: String?
 
     private var shown: [FfiActivity] {
         let q = filter.trimmingCharacters(in: .whitespaces)
@@ -16,7 +17,7 @@ struct ActivitySheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Activity").font(.title3.bold())
@@ -27,8 +28,15 @@ struct ActivitySheet: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 180)
             }
-            if shown.isEmpty {
-                ContentUnavailableView("No activity yet", systemImage: "clock")
+            if let loadError {
+                ContentUnavailableView("Couldn't load activity", systemImage: "exclamationmark.triangle",
+                                       description: Text(loadError))
+                    .frame(maxHeight: .infinity)
+            } else if entries.isEmpty {
+                ContentUnavailableView("No activity yet", systemImage: "clock.arrow.circlepath")
+                    .frame(maxHeight: .infinity)
+            } else if shown.isEmpty {
+                ContentUnavailableView.search(text: filter)
                     .frame(maxHeight: .infinity)
             } else {
                 Table(shown) {
@@ -36,20 +44,26 @@ struct ActivitySheet: View {
                         Text(Date(timeIntervalSince1970: TimeInterval(a.timestamp)).formatted(date: .abbreviated, time: .shortened))
                             .foregroundStyle(.secondary)
                     }
-                    .width(min: 120, ideal: 140)
+                    .width(min: 130, ideal: 145, max: 160)
                     TableColumn("What") { a in
                         Label(describe(a.action), systemImage: icon(a.action))
                     }
-                    .width(min: 120, ideal: 150)
+                    .width(min: 110, ideal: 130, max: 150)
                     TableColumn("Variable") { a in
-                        Text(a.targetLabel).font(.system(.body, design: .monospaced))
+                        Text(a.targetLabel)
+                            .font(.system(.body, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(a.targetLabel)
                     }
+                    .width(min: 200, ideal: 270)
                     TableColumn("Who") { a in
                         Text(a.fromSync ? "Teammate (synced)" : (a.byMe ? "You" : "Teammate"))
                             .foregroundStyle(.secondary)
                     }
-                    .width(min: 80, ideal: 120)
+                    .width(min: 70, ideal: 90, max: 120)
                 }
+                .alternatingRowBackgrounds(.disabled)
             }
             HStack {
                 Spacer()
@@ -57,9 +71,13 @@ struct ActivitySheet: View {
             }
         }
         .padding(20)
-        .frame(width: 720, height: 480)
+        .frame(width: Layout.sheetWide, height: 520)
         .onAppear {
-            entries = (try? session.listActivity(projectId: projectId, limit: 500)) ?? []
+            do {
+                entries = try session.listActivity(projectId: projectId, limit: 500)
+            } catch {
+                loadError = userMessage(error)
+            }
         }
     }
 
@@ -70,6 +88,7 @@ struct ActivitySheet: View {
         case "deleted_secret": return "Deleted"
         case "renamed_secret": return "Renamed"
         case "changed_kind": return "Changed type"
+        case "changed_expiry": return "Changed expiry"
         case "revealed_secret": return "Revealed"
         case "synced_secret": return "Synced change"
         default: return action.replacingOccurrences(of: "_", with: " ").capitalized
@@ -82,6 +101,8 @@ struct ActivitySheet: View {
         case "updated_secret": return "pencil"
         case "deleted_secret": return "trash"
         case "renamed_secret": return "character.cursor.ibeam"
+        case "changed_kind": return "lock.rotation"
+        case "changed_expiry": return "calendar"
         case "revealed_secret": return "eye"
         case "synced_secret": return "arrow.triangle.2.circlepath"
         default: return "circle"

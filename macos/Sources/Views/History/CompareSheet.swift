@@ -26,7 +26,7 @@ struct CompareSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             HStack {
                 Text("\(pair.left.name)  ↔  \(pair.right.name)").font(.title3.bold())
                 Spacer()
@@ -62,17 +62,16 @@ struct CompareSheet: View {
                     }
                     .width(90)
                 }
+                .alternatingRowBackgrounds(.disabled)
             }
-            if let error {
-                Text(error).foregroundStyle(.red)
-            }
+            SheetError(text: error)
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 820, height: 520)
+        .frame(width: Layout.sheetWide, height: sheetHeight)
         .onAppear {
             do {
                 rows = try session.compareEnvironments(projectId: projectId, leftEnvId: pair.left.id, rightEnvId: pair.right.id)
@@ -80,6 +79,11 @@ struct CompareSheet: View {
                 self.error = userMessage(error)
             }
         }
+    }
+
+    /// Sized to the rows instead of a fixed height full of empty space.
+    private var sheetHeight: CGFloat {
+        min(560, 190 + CGFloat(max(shown.count, 4)) * 26)
     }
 
     private func count(_ status: String, _ label: String, _ color: Color) -> some View {
@@ -91,7 +95,8 @@ struct CompareSheet: View {
     @ViewBuilder
     private func cell(_ value: String?, secret: Bool) -> some View {
         if let value {
-            Text(secret && !showSecrets ? "••••••••" : (value.isEmpty ? "(empty)" : value))
+            Text(secret && !showSecrets ? Layout.mask : (value.isEmpty ? "empty" : value))
+                .italic(value.isEmpty && !(secret && !showSecrets))
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)

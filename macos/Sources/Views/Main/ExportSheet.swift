@@ -46,8 +46,8 @@ struct ExportSheet: View {
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Export \(envName)").font(.title3.bold())
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
+            Text("Export “\(envName)”").font(.title3.bold())
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
                     Picker("Format", selection: $format) {
@@ -102,12 +102,10 @@ struct ExportSheet: View {
                     }
                 }
             }
-            if let error {
-                Text(error).foregroundStyle(.red).font(.callout)
-            }
+            SheetError(text: error)
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Close", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(copied ? "Copied" : "Copy") {
                     Clipboard.copy(preview, sensitive: includeSecrets && format != .example)
                     copied = true
@@ -121,7 +119,7 @@ struct ExportSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 760, height: 520)
+        .frame(width: Layout.sheetWide, height: 520)
         .onAppear {
             selected = Set(secrets.map(\.key))
             resourceName = projectName

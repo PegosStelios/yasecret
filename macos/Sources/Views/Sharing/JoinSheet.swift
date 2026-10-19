@@ -10,9 +10,10 @@ struct JoinSheet: View {
     @State private var error: String?
     @State private var deviceCode = ""
     @State private var copied = false
+    @State private var codeError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             Text("Join a Shared Project").font(.title3.bold())
             Text("Paste the invite link you were sent. The person who shared it needs Yasecret open and unlocked while you join.")
                 .font(.callout)
@@ -32,11 +33,13 @@ struct JoinSheet: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Asked for a device code? Send this to the project owner:")
                         .font(.callout)
-                    HStack {
-                        Text(grouped(deviceCode))
+                    HStack(alignment: .top) {
+                        Text(deviceCode.isEmpty ? "Unavailable — \(codeError ?? "unlock the vault first")" : grouped(deviceCode))
                             .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(deviceCode.isEmpty ? .secondary : .primary)
                             .textSelection(.enabled)
-                        Spacer()
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Button {
                             Clipboard.copy(deviceCode, sensitive: false)
                             copied = true
@@ -44,20 +47,18 @@ struct JoinSheet: View {
                         } label: {
                             Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                         }
+                        .disabled(deviceCode.isEmpty)
                     }
                 }
                 .padding(4)
             }
 
-            if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SheetError(text: error)
 
             HStack {
                 if joining {
                     ProgressView().controlSize(.small)
-                    Text("Connecting to the owner's Mac…").foregroundStyle(.secondary)
+                    Text("Connecting to the owner's computer…").foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -69,8 +70,11 @@ struct JoinSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
-        .onAppear { deviceCode = (try? session.deviceCode()) ?? "" }
+        .frame(width: Layout.sheetMedium)
+        .interactiveDismissDisabled(joining)
+        .onAppear {
+            do { deviceCode = try session.deviceCode() } catch { codeError = userMessage(error) }
+        }
     }
 
     private var trimmed: String { link.trimmingCharacters(in: .whitespacesAndNewlines) }

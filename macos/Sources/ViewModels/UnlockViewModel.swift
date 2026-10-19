@@ -37,21 +37,30 @@ final class UnlockViewModel {
 
     private func unlock(with pw: String) async {
         if isFirstRun && pw != confirmPassword {
-            errorMessage = "Passwords don't match — confirm your master password"
+            errorMessage = "Passwords don't match — type the same password in both fields"
             return
         }
         isUnlocking = true
         errorMessage = nil
         defer { isUnlocking = false }
-        do {
-            let session = try YasecretSession(dbPath: dbPath, password: pw)
+        let path = dbPath
+        // Opening the vault runs the key derivation; keep it off the main thread.
+        let result = await Task.detached { () -> Result<YasecretSession, Error> in
+            Result { try YasecretSession(dbPath: path, password: pw) }
+        }.value
+        switch result {
+        case .success(let session):
             keychain.save(password: pw)
             appState.session = session
             appState.isLocked = false
             isFirstRun = false
             appState.didUnlock()
-        } catch {
-            errorMessage = "Wrong password — try again"
+        case .failure(let error):
+            if case FfiError.WrongPassword = error {
+                errorMessage = "Wrong password — try again"
+            } else {
+                errorMessage = "Couldn't open the vault: \(userMessage(error))"
+            }
             appState.session = nil
             appState.isLocked = true
         }

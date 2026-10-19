@@ -31,7 +31,7 @@ struct ProjectListView: View {
                 } actions: {
                     Button("New Project") { showingNew = true }
                         .buttonStyle(.borderedProminent)
-                    Button("Join Shared Project…") { joinRequest = JoinRequest(link: "") }
+                    Button("Join Shared Project") { joinRequest = JoinRequest(link: "") }
                 }
             }
         }
@@ -41,7 +41,8 @@ struct ProjectListView: View {
                     Label("New", systemImage: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help("New project")
+                .help("New project (⇧⌘N)")
+                .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button { joinRequest = JoinRequest(link: "") } label: {
                     Label("Join", systemImage: "person.badge.plus")
                 }
@@ -85,18 +86,23 @@ struct ProjectListView: View {
         } message: {
             Text(vm.sharedIds.contains(pendingDelete?.id ?? "")
                  ? "This project is shared. Deleting it here stops syncing it and removes it from this Mac. This can't be undone."
-                 : "All environments and variables in this project are deleted. This can't be undone.")
+                 : "All of its environments and variables are deleted too. This can't be undone.")
         }
         .errorAlert($vm.errorMessage)
+        .task {
+            switch DevHook.open {
+            case "newProject": showingNew = true
+            case "join": joinRequest = JoinRequest(link: "")
+            default: break
+            }
+        }
     }
 
     @ViewBuilder
     private func row(_ proj: FfiProject) -> some View {
         if renamingId == proj.id {
-            TextField("Project name", text: $renameText)
-                .textFieldStyle(.plain)
-                .onSubmit(commitRename)
-                .onExitCommand { renamingId = nil }
+            InlineRenameField(placeholder: "Project name", text: $renameText,
+                              onCommit: commitRename, onCancel: { renamingId = nil })
         } else {
             Label(proj.name, systemImage: vm.sharedIds.contains(proj.id) ? "person.2.fill" : "folder")
                 .contextMenu {
@@ -132,12 +138,12 @@ private struct NewProjectSheet: View {
     @State private var withDefaults = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             Text("New Project").font(.title3.bold())
             TextField("Project name", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(create)
-            Toggle("Create development, staging and production environments", isOn: $withDefaults)
+            Toggle("Add development, staging and production", isOn: $withDefaults)
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -149,7 +155,7 @@ private struct NewProjectSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 400)
+        .frame(width: Layout.sheetSmall)
     }
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }

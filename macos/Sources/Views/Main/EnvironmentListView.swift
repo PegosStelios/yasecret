@@ -33,12 +33,25 @@ struct EnvironmentListView: View {
     }
 
     /// Same height as the variables search field, so both column headers end on one line.
+    /// Why sharing can't work right now, if anything is wrong.
+    private var problem: String? {
+        if let e = sharing.error { return e }
+        if sharing.isShared, let e = appState.syncError { return "Sharing unavailable: \(e)" }
+        return sharing.status?.lastError
+    }
+
+    private var statusColor: Color {
+        if problem != nil { return .red }
+        guard sharing.isShared else { return Color.secondary.opacity(0.5) }
+        return (sharing.status?.peersOnline ?? 0) > 0 ? .green : .orange
+    }
+
     private var statusRow: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(sharing.isShared ? ((sharing.status?.peersOnline ?? 0) > 0 ? Color.green : Color.orange) : Color.secondary.opacity(0.5))
+                .fill(statusColor)
                 .frame(width: 7, height: 7)
-            Text(sharing.summary ?? "Not shared")
+            Text(problem.map { _ in "Sharing problem — hover for details" } ?? sharing.summary ?? "Not shared")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -48,7 +61,7 @@ struct EnvironmentListView: View {
         .frame(height: 28)
         .padding(.horizontal, 8)
         .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 7))
-        .help(sharing.status?.lastError ?? (sharing.isShared
+        .help(problem ?? (sharing.isShared
             ? "Devices sync directly whenever both are open and unlocked"
             : "Use Share to sync this project with teammates"))
     }
@@ -69,7 +82,7 @@ struct EnvironmentListView: View {
                     if !readOnly {
                         Button("Add Defaults") { addDefaults() }
                             .buttonStyle(.borderedProminent)
-                        Button("New Environment…") { showingNew = true }
+                        Button("New Environment") { showingNew = true }
                     }
                 }
             }
@@ -138,15 +151,27 @@ struct EnvironmentListView: View {
             Text("Its \(pendingDelete?.secretCount ?? 0) variables are deleted too. This can't be undone.")
         }
         .errorAlert($vm.errorMessage)
+        .task {
+            guard let hook = DevHook.open else { return }
+            try? await Task.sleep(for: .milliseconds(600))
+            switch hook {
+            case "newEnv": showingNew = true
+            case "clone": cloning = vm.environments.first
+            case "activity": showingActivity = true
+            case "compare":
+                if vm.environments.count > 1 {
+                    comparing = ComparePair(left: vm.environments[0], right: vm.environments[vm.environments.count - 1])
+                }
+            default: break
+            }
+        }
     }
 
     @ViewBuilder
     private func row(_ env: FfiEnvironment) -> some View {
         if renamingId == env.id {
-            TextField("Environment name", text: $renameText)
-                .textFieldStyle(.plain)
-                .onSubmit(commitRename)
-                .onExitCommand { renamingId = nil }
+            InlineRenameField(placeholder: "Environment name", text: $renameText,
+                              onCommit: commitRename, onCancel: { renamingId = nil })
         } else {
             HStack {
                 Label(env.name, systemImage: icon(for: env.name))

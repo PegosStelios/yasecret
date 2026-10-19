@@ -11,28 +11,50 @@ final class SharingViewModel {
     /// Anyone who isn't an owner or editor can't change shared data: their edits would never sync.
     var isReadOnly: Bool { isShared && !["owner", "editor"].contains(status?.myLevel ?? "") }
 
-    func refresh(projectId: String, session: YasecretSession) {
-        status = try? session.syncStatus(projectId: projectId)
-        members = isShared ? ((try? session.listMembers(projectId: projectId)) ?? []) : []
+    var error: String?
+    private var requestId = UUID()
+
+    /// Reads status and members off the main thread; only the latest request may update state.
+    func refresh(projectId: String, session: YasecretSession) async {
+        let id = UUID()
+        requestId = id
+        let (st, list, err) = await Task.detached { () -> (FfiSyncStatus?, [FfiMember], String?) in
+            do {
+                let st = try session.syncStatus(projectId: projectId)
+                let list = st.shared ? try session.listMembers(projectId: projectId) : []
+                return (st, list, nil)
+            } catch {
+                return (nil, [], userMessage(error))
+            }
+        }.value
+        guard requestId == id else { return }
+        status = st
+        members = list
+        error = err
     }
 
     func clear() {
+        requestId = UUID()
         status = nil
         members = []
+        error = nil
     }
 
     var summary: String? {
         guard let s = status, s.shared else { return nil }
         var parts: [String] = []
         switch s.myLevel {
-        case "owner": parts.append("Shared")
         case "viewer": parts.append("View only")
-        case "pending": parts.append("Waiting for the owner")
+        case "pending": parts.append("Waiting for owner")
         default: parts.append("Shared")
         }
         let others = max(members.count - 1, 0)
-        if others > 0 { parts.append("\(others) member\(others == 1 ? "" : "s")") }
-        parts.append(s.peersOnline > 0 ? "\(s.peersOnline) online" : "offline")
+        if others == 0 {
+            parts.append(s.isOwner ? "no one has joined" : "connecting")
+        } else {
+            parts.append(plural(others, "member"))
+            parts.append(s.peersOnline > 0 ? "\(s.peersOnline) online" : "none online")
+        }
         return parts.joined(separator: " · ")
     }
 }
@@ -48,7 +70,7 @@ func levelLabel(_ level: String) -> String {
     case "owner": return "Owner"
     case "editor": return "Can edit"
     case "viewer": return "Can view"
-    case "pending": return "Joining…"
+    case "pending": return "Waiting for owner"
     default: return level.capitalized
     }
 }

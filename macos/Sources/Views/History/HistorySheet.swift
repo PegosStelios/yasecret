@@ -10,12 +10,13 @@ struct HistorySheet: View {
 
     @State private var versions: [FfiVersion] = []
     @State private var current = ""
+    @State private var currentUpdatedAt: Int64?
     @State private var revealed: Set<String> = []
     @State private var pendingRestore: FfiVersion?
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("History").font(.title3.bold())
                 Text(secret.key).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
@@ -23,7 +24,7 @@ struct HistorySheet: View {
 
             List {
                 Section("Current") {
-                    row(id: "current", value: current, date: secret.updatedAt, by: nil, note: nil, restorable: nil)
+                    row(id: "current", value: current, date: currentUpdatedAt ?? secret.updatedAt, by: nil, note: nil, restorable: nil)
                 }
                 Section(versions.isEmpty ? "No earlier values" : "Earlier values") {
                     ForEach(versions, id: \.id) { v in
@@ -32,18 +33,15 @@ struct HistorySheet: View {
                     }
                 }
             }
-            .frame(minHeight: 260)
 
-            if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-            }
+            SheetError(text: error)
             HStack {
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 560, height: 460)
+        .frame(width: Layout.sheetMedium, height: min(540, 230 + CGFloat(max(versions.count, 1)) * 52))
         .onAppear(perform: load)
         .confirmationDialog("Restore this value?", isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }), titleVisibility: .visible) {
             Button("Restore") { restore() }
@@ -55,7 +53,8 @@ struct HistorySheet: View {
     private func row(id: String, value: String, date: Int64, by: String?, note: String?, restorable: FfiVersion?) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(secret.isSecret && !revealed.contains(id) ? "••••••••••••" : (value.isEmpty ? "(empty)" : value))
+                Text(secret.isSecret && !revealed.contains(id) ? Layout.mask : (value.isEmpty ? "empty" : value))
+                    .italic(value.isEmpty && !(secret.isSecret && !revealed.contains(id)))
                     .font(.system(.body, design: .monospaced))
                     .lineLimit(2)
                     .textSelection(.enabled)
@@ -71,7 +70,7 @@ struct HistorySheet: View {
                 .buttonStyle(.borderless)
             }
             if let v = restorable, !readOnly {
-                Button("Restore") { pendingRestore = v }
+                Button("Restore…") { pendingRestore = v }
             }
         }
     }
@@ -96,6 +95,7 @@ struct HistorySheet: View {
         do {
             current = try session.getSecretPlaintext(projectId: projectId, secretId: secret.id)
             versions = try session.listVersions(projectId: projectId, secretId: secret.id)
+            currentUpdatedAt = try session.listSecrets(envId: secret.envId).first { $0.id == secret.id }?.updatedAt
         } catch {
             self.error = userMessage(error)
         }

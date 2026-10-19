@@ -51,7 +51,8 @@ final class ProjectsViewModel {
         do {
             try session.deleteProject(projectId: id)
             projects.removeAll { $0.id == id }
-            if selectedProjectId == id { selectedProjectId = nil }
+            sharedIds.remove(id)
+            if selectedProjectId == id { selectedProjectId = projects.first?.id }
         } catch {
             errorMessage = userMessage(error)
         }

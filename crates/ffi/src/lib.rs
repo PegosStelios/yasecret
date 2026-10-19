@@ -247,6 +247,7 @@ impl YasecretSession {
     }
 
     pub fn rename_project(&self, project_id: String, new_name: String) -> Result<(), FfiError> {
+        self.check_write(&project_id, true)?;
         let db = self.open()?;
         yasecret_core::project::rename(&db, &project_id, &new_name)?;
         self.touched(&project_id);
@@ -272,6 +273,7 @@ impl YasecretSession {
     }
 
     pub fn create_environment(&self, project_id: String, name: String) -> Result<FfiEnvironment, FfiError> {
+        self.check_write(&project_id, false)?;
         let db = self.open()?;
         let e = yasecret_core::environment::create(&db, &project_id, &name)?;
         self.touched(&project_id);
@@ -279,6 +281,7 @@ impl YasecretSession {
     }
 
     pub fn clone_environment(&self, env_id: String, new_name: String) -> Result<FfiEnvironment, FfiError> {
+        self.check_write_env(&env_id)?;
         let db = self.open()?;
         db.conn().execute_batch("BEGIN").map_err(db_err)?;
         let result = yasecret_core::environment::clone(&db, &env_id, &new_name)
@@ -290,6 +293,7 @@ impl YasecretSession {
     }
 
     pub fn rename_environment(&self, env_id: String, new_name: String) -> Result<(), FfiError> {
+        self.check_write_env(&env_id)?;
         let db = self.open()?;
         yasecret_core::environment::rename(&db, &env_id, &new_name)?;
         self.touched_env(&db, &env_id);
@@ -297,6 +301,7 @@ impl YasecretSession {
     }
 
     pub fn delete_environment(&self, env_id: String) -> Result<(), FfiError> {
+        self.check_write_env(&env_id)?;
         let db = self.open()?;
         let project_id = yasecret_core::environment::get(&db, &env_id)?.project_id;
         yasecret_core::environment::delete(&db, &env_id)?;
@@ -323,19 +328,17 @@ impl YasecretSession {
         expires_at: Option<i64>,
         is_secret: bool,
     ) -> Result<FfiSecret, FfiError> {
+        self.check_write(&project_id, false)?;
         check_key(&key)?;
         let db = self.open()?;
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
         db.conn().execute_batch("BEGIN").map_err(db_err)?;
         let result = (|| {
-            let s = yasecret_core::secret::create(
-                &db, &env_id, &key, value.as_bytes(), &proj_key, &id, expires_at,
+            let s = yasecret_core::secret::create_with_kind(
+                &db, &env_id, &key, value.as_bytes(), &proj_key, &id, expires_at, is_secret,
             ).map_err(duplicate_aware)?;
-            if !is_secret {
-                yasecret_core::secret::set_kind(&db, &s.id, false, &id)?;
-            }
-            Ok(FfiSecret { is_secret, ..FfiSecret::from(s) })
+            Ok(FfiSecret::from(s))
         })();
         let r = finish_tx(&db, result)?;
         self.touched(&project_id);
@@ -351,6 +354,7 @@ impl YasecretSession {
         new_value: Option<String>,
         is_secret: Option<bool>,
     ) -> Result<(), FfiError> {
+        self.check_write(&project_id, false)?;
         if let Some(k) = &new_key {
             check_key(k)?;
         }
@@ -384,6 +388,7 @@ impl YasecretSession {
         secret_id: String,
         new_value: String,
     ) -> Result<(), FfiError> {
+        self.check_write(&project_id, false)?;
         let db = self.open()?;
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
@@ -393,6 +398,7 @@ impl YasecretSession {
     }
 
     pub fn delete_secret(&self, secret_id: String) -> Result<(), FfiError> {
+        self.check_write_secret(&secret_id)?;
         let db = self.open()?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
         let project_id: Option<String> = db.conn().query_row(
@@ -443,6 +449,7 @@ impl YasecretSession {
     }
 
     pub fn restore_version(&self, project_id: String, secret_id: String, version_id: String) -> Result<(), FfiError> {
+        self.check_write(&project_id, false)?;
         let db = self.open()?;
         let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
@@ -545,6 +552,7 @@ impl YasecretSession {
         env_id: String,
         content: String,
     ) -> Result<u32, FfiError> {
+        self.check_write(&project_id, false)?;
         let db = self.open()?;
         let proj_key = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let id = yasecret_core::identity::load_or_create(&db, "local")?.id;
@@ -596,6 +604,7 @@ impl YasecretSession {
         items: Vec<FfiImportItem>,
         overwrite: bool,
     ) -> Result<FfiImportSummary, FfiError> {
+        self.check_write(&project_id, false)?;
         for item in &items {
             check_key(&item.key)?;
         }
@@ -622,12 +631,9 @@ impl YasecretSession {
                         summary.updated += 1;
                     }
                     None => {
-                        let s = yasecret_core::secret::create(
-                            &db, &env_id, &item.key, item.value.as_bytes(), &proj_key, &id, None,
+                        yasecret_core::secret::create_with_kind(
+                            &db, &env_id, &item.key, item.value.as_bytes(), &proj_key, &id, None, item.is_secret,
                         ).map_err(duplicate_aware)?;
-                        if !item.is_secret {
-                            yasecret_core::secret::set_kind(&db, &s.id, false, &id)?;
-                        }
                         summary.added += 1;
                     }
                 }
@@ -671,6 +677,7 @@ impl YasecretSession {
     }
 
     pub fn set_expiry(&self, project_id: String, secret_id: String, expires_at: Option<i64>) -> Result<(), FfiError> {
+        self.check_write(&project_id, false)?;
         let db = self.open()?;
         let me = yasecret_core::identity::load_or_create(&db, "local")?.id;
         yasecret_core::secret::set_expiry(&db, &secret_id, expires_at, &me)?;
@@ -900,6 +907,38 @@ fn env_record(db: &Db, e: yasecret_core::models::Environment) -> Result<FfiEnvir
 impl YasecretSession {
     fn open(&self) -> Result<std::sync::MutexGuard<'_, Db>, FfiError> {
         Ok(self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
+    }
+
+    /// Shared projects only accept changes from owners and editors (renaming the project: owner
+    /// only); refuse locally too, so a view-only member's edit never silently diverges.
+    fn check_write(&self, project_id: &str, owner_only: bool) -> Result<(), FfiError> {
+        let Some(svc) = self.sync_service() else { return Ok(()) };
+        let st = svc.status(project_id)?;
+        if !st.shared {
+            return Ok(());
+        }
+        let allowed = if owner_only { st.is_owner } else { st.my_level == "owner" || st.my_level == "editor" };
+        if allowed { Ok(()) } else { Err(FfiError::PermissionDenied) }
+    }
+
+    fn check_write_env(&self, env_id: &str) -> Result<(), FfiError> {
+        let project_id = {
+            let db = self.open()?;
+            yasecret_core::environment::get(&db, env_id)?.project_id
+        };
+        self.check_write(&project_id, false)
+    }
+
+    fn check_write_secret(&self, secret_id: &str) -> Result<(), FfiError> {
+        let project_id: Option<String> = self.open()?.conn().query_row(
+            "SELECT e.project_id FROM secret s JOIN environment e ON e.id = s.env_id WHERE s.id = ?1",
+            [secret_id],
+            |r| r.get(0),
+        ).ok();
+        match project_id {
+            Some(pid) => self.check_write(&pid, false),
+            None => Ok(()),
+        }
     }
 
     fn sync_service(&self) -> Option<Arc<yasecret_sync::live::SyncService>> {
@@ -1180,6 +1219,47 @@ mod tests {
         assert_eq!(sum.added, 1);
         let id = session.list_secrets(e).unwrap()[0].id.clone();
         assert_eq!(session.get_secret_plaintext(p, id).unwrap(), "2");
+    }
+
+    #[test]
+    fn plain_variable_logs_a_single_activity_entry() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, e) = proj_env(&session);
+        session.create_secret(p.clone(), e, "PORT".into(), "3000".into(), None, false).unwrap();
+        let log = session.list_activity(Some(p), 50).unwrap();
+        assert_eq!(log.len(), 1, "got {:?}", log.iter().map(|a| a.action.clone()).collect::<Vec<_>>());
+        assert_eq!(log[0].action, "created_secret");
+    }
+
+    #[test]
+    fn view_only_member_cannot_change_shared_data() {
+        let owner_dir = tempdir().unwrap();
+        let owner = make_session(&owner_dir);
+        let (p, e) = proj_env(&owner);
+        owner.create_secret(p.clone(), e.clone(), "A".into(), "1".into(), None, true).unwrap();
+        owner.start_sync("owner".into()).unwrap();
+
+        let viewer_dir = tempdir().unwrap();
+        let viewer = make_session(&viewer_dir);
+        viewer.start_sync("viewer".into()).unwrap();
+        let link = owner.create_invite(p.clone(), Some(viewer.device_code().unwrap()), "viewer".into()).unwrap();
+        assert_eq!(viewer.join_project(link).unwrap(), p);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
+        while viewer.sync_status(p.clone()).unwrap().my_level != "viewer" {
+            assert!(std::time::Instant::now() < deadline, "viewer was never admitted");
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        assert!(matches!(viewer.create_secret(p.clone(), e.clone(), "B".into(), "2".into(), None, true), Err(FfiError::PermissionDenied)));
+        assert!(matches!(viewer.create_environment(p.clone(), "qa".into()), Err(FfiError::PermissionDenied)));
+        assert!(matches!(viewer.rename_project(p.clone(), "x".into()), Err(FfiError::PermissionDenied)));
+        let sid = viewer.list_secrets(e.clone()).unwrap()[0].id.clone();
+        assert!(matches!(viewer.delete_secret(sid), Err(FfiError::PermissionDenied)));
+        // Reading stays allowed.
+        assert_eq!(viewer.list_secrets(e).unwrap().len(), 1);
+        owner.stop_sync();
+        viewer.stop_sync();
     }
 
     #[test]

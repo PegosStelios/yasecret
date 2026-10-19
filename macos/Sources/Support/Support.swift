@@ -10,7 +10,7 @@ func userMessage(_ error: Error) -> String {
     switch e {
     case .WrongPassword: return "Wrong password"
     case .NotFound(let msg): return "Not found: \(msg)"
-    case .PermissionDenied: return "You don't have permission to do that"
+    case .PermissionDenied: return "You have view-only access to this shared project, so you can't change it"
     case .Crypto: return "Couldn't decrypt this value with the vault key"
     case .Io(let msg): return "File error: \(msg)"
     case .Db(let msg): return "Database error: \(msg)"
@@ -58,6 +58,14 @@ extension View {
 
 enum Layout {
     static let gutter: CGFloat = 16
+    /// Every sheet uses one of these widths and the same inner spacing.
+    static let sheetSmall: CGFloat = 400
+    static let sheetMedium: CGFloat = 500
+    static let sheetLarge: CGFloat = 640
+    static let sheetWide: CGFloat = 820
+    static let sheetSpacing: CGFloat = 14
+    /// Masked values look identical everywhere and don't hint at their length.
+    static let mask = "••••••••••••"
     /// Column headers sit in the window's top band, level with the traffic lights.
     static let headerTop: CGFloat = 14
     static let footerHeight: CGFloat = 36
@@ -120,7 +128,7 @@ struct NameSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             Text(title).font(.title3.bold())
             TextField(placeholder, text: $name)
                 .textFieldStyle(.roundedBorder)
@@ -139,7 +147,7 @@ struct NameSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 360)
+        .frame(width: Layout.sheetSmall)
     }
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -167,5 +175,48 @@ enum DevHook {
         #else
         ""
         #endif
+    }
+}
+
+/// Text field for renaming a list row in place: focused on appear, saves on Return or when
+/// focus moves away, cancels on Escape.
+struct InlineRenameField: View {
+    let placeholder: String
+    @Binding var text: String
+    let onCommit: () -> Void
+    let onCancel: () -> Void
+    @FocusState private var focused: Bool
+    @State private var finished = false
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain)
+            .focused($focused)
+            .onAppear { DispatchQueue.main.async { focused = true } }
+            .onSubmit { finish(commit: true) }
+            .onExitCommand { finish(commit: false) }
+            .onChange(of: focused) { _, isFocused in
+                if !isFocused { finish(commit: true) }
+            }
+    }
+
+    private func finish(commit: Bool) {
+        guard !finished else { return }
+        finished = true
+        commit ? onCommit() : onCancel()
+    }
+}
+
+/// Error line used at the bottom of every sheet.
+struct SheetError: View {
+    let text: String?
+
+    var body: some View {
+        if let text {
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

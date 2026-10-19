@@ -13,6 +13,8 @@ struct SecretListView: View {
 
     @State private var selection = Set<String>()
     @State private var revealed: [String: String] = [:]
+    /// `updatedAt` of each revealed variable, so a changed value is re-hidden instead of shown stale.
+    @State private var revealedAt: [String: Int64] = [:]
     @State private var plainValues: [String: String] = [:]
     @State private var editor: EditorRequest?
     @State private var showingImport = false
@@ -47,7 +49,7 @@ struct SecretListView: View {
                     Button(role: .destructive) {
                         pendingDelete = vm.secrets.filter { selection.contains($0.id) }
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("Delete…", systemImage: "trash")
                     }
                     .buttonStyle(.borderless)
                     .help("Delete the selected variables (⌫)")
@@ -90,16 +92,28 @@ struct SecretListView: View {
         }
         .confirmationDialog(
             pendingDelete.count == 1
-                ? "Delete \(pendingDelete[0].key)?"
+                ? "Delete “\(pendingDelete[0].key)”?"
                 : "Delete \(pendingDelete.count) variables?",
             isPresented: Binding(get: { !pendingDelete.isEmpty }, set: { if !$0 { pendingDelete = [] } }),
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive, action: deletePending)
+            Button(pendingDelete.count == 1 ? "Delete Variable" : "Delete Variables", role: .destructive, action: deletePending)
         } message: {
-            Text("Removed from \(envName). This can't be undone.")
+            Text("\(pendingDelete.count == 1 ? "It's" : "They're") removed from \(envName). Earlier values stay in history. This can't be undone.")
         }
         .errorAlert($vm.errorMessage)
+        .task {
+            guard let hook = DevHook.open else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            let first = vm.secrets.first { $0.isSecret }
+            switch hook {
+            case "editor-new": editor = EditorRequest(secret: nil)
+            case "editor": editor = first.map { EditorRequest(secret: $0) }
+            case "history": historyFor = first
+            case "export": showingExport = true
+            default: break
+            }
+        }
         .task(id: vm.secrets) { loadPlainValues() }
         .task { if DevHook.open == "import" { showingImport = true } }
     }
@@ -187,7 +201,7 @@ struct SecretListView: View {
                 if !readOnly {
                     Button("Add Variable") { editor = EditorRequest(secret: nil) }
                         .buttonStyle(.borderedProminent)
-                    Button("Import…") { showingImport = true }
+                    Button("Import") { showingImport = true }
                 }
             }
         } else if vm.filtered.isEmpty {
@@ -251,7 +265,7 @@ struct SecretListView: View {
                         Text(v)
                     }
                 } else {
-                    Text("••••••••••••").foregroundStyle(.secondary)
+                    Text(Layout.mask).foregroundStyle(.secondary)
                 }
             }
             .font(.system(.body, design: .monospaced))
@@ -328,7 +342,9 @@ struct SecretListView: View {
             values[s.id] = plaintext(s)
         }
         plainValues = values
-        revealed = revealed.filter { id, _ in vm.secrets.contains { $0.id == id && $0.isSecret } }
+        let stamps = Dictionary(uniqueKeysWithValues: vm.secrets.filter(\.isSecret).map { ($0.id, $0.updatedAt) })
+        revealed = revealed.filter { id, _ in stamps[id] != nil && stamps[id] == revealedAt[id] }
+        revealedAt = revealedAt.filter { id, _ in revealed[id] != nil }
     }
 
     private func toggleReveal(_ s: FfiSecret) {
@@ -336,6 +352,7 @@ struct SecretListView: View {
             revealed[s.id] = nil
         } else if let v = plaintext(s) {
             revealed[s.id] = v
+            revealedAt[s.id] = s.updatedAt
             try? appState.session?.recordReveal(secretId: s.id)
         }
     }

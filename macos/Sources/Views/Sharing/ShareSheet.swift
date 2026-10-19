@@ -22,9 +22,13 @@ struct ShareSheet: View {
     @State private var error: String?
     @State private var copied = false
     @State private var confirmStop = false
+    @State private var pendingRemoval: FfiMember?
+
+    /// Return creates the invite while one can be made; otherwise it closes the sheet.
+    private var inviteIsDefault: Bool { sharing.isOwner && link == nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             HStack {
                 Text("Share “\(projectName)”").font(.title3.bold())
                 Spacer()
@@ -45,10 +49,7 @@ struct ShareSheet: View {
                 membersSection
             }
 
-            if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            SheetError(text: error)
 
             HStack {
                 if sharing.isShared {
@@ -57,12 +58,17 @@ struct ShareSheet: View {
                     }
                 }
                 Spacer()
-                Button("Done") { dismiss() }
-                    .keyboardShortcut(.defaultAction)
+                if inviteIsDefault {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                } else {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
+                }
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: Layout.sheetLarge)
         .task {
             if DevHook.open == "share-invite" {
                 // Sync starts in the background after unlock; retry until it's up.
@@ -76,9 +82,21 @@ struct ShareSheet: View {
         }
         .task {
             while !Task.isCancelled {
-                sharing.refresh(projectId: projectId, session: session)
+                await sharing.refresh(projectId: projectId, session: session)
                 try? await Task.sleep(for: .seconds(3))
             }
+        }
+        .confirmationDialog(
+            "Remove \(pendingRemoval?.name ?? "")?",
+            isPresented: Binding(get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let m = pendingRemoval { setLevel(m, "removed") }
+                pendingRemoval = nil
+            }
+        } message: {
+            Text("The project key is replaced and handed to everyone else, so they can't read anything changed afterwards.")
         }
         .confirmationDialog(
             sharing.isOwner ? "Stop sharing “\(projectName)”?" : "Leave “\(projectName)”?",
@@ -106,7 +124,7 @@ struct ShareSheet: View {
 
             Text(mode == .link
                  ? "Anyone with the link can join once, within 24 hours. Send it over a private channel."
-                 : "Only the device whose code you paste can use this invite, so it's safe to send anywhere. Your teammate finds their code in Join Project.")
+                 : "Only the device whose code you paste can use this invite, so it's safe to send anywhere. Your teammate finds their code under Join Shared Project.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -124,9 +142,15 @@ struct ShareSheet: View {
                 .frame(width: 200)
                 Spacer()
                 if working { ProgressView().controlSize(.small) }
-                Button(link == nil ? "Create Invite" : "Create Another", action: createInvite)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(working || (mode == .device && cleanedCode.count != 64))
+                if inviteIsDefault {
+                    Button("Create Invite", action: createInvite)
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(working || (mode == .device && cleanedCode.count != 64))
+                } else {
+                    Button("Create Another", action: createInvite)
+                        .disabled(working || (mode == .device && cleanedCode.count != 64))
+                }
             }
 
             if let link {
@@ -186,7 +210,7 @@ struct ShareSheet: View {
                             Button("Can edit") { setLevel(m, "editor") }
                             Button("Can view") { setLevel(m, "viewer") }
                             Divider()
-                            Button("Remove", role: .destructive) { setLevel(m, "removed") }
+                            Button("Remove…", role: .destructive) { pendingRemoval = m }
                         }
                         .fixedSize()
                     } else {
@@ -195,7 +219,7 @@ struct ShareSheet: View {
                 }
             }
             if sharing.isOwner && sharing.members.count > 1 {
-                Text("Removing someone stops their changes from being accepted. To also cut off reading, stop sharing and invite the others again.")
+                Text("Removing someone replaces the project key, so they can't read anything changed afterwards.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -223,22 +247,32 @@ struct ShareSheet: View {
     }
 
     private func setLevel(_ m: FfiMember, _ level: String) {
-        do {
-            try session.setMemberLevel(projectId: projectId, peerId: m.peerId, level: level)
-            sharing.refresh(projectId: projectId, session: session)
-        } catch {
-            self.error = userMessage(error)
-        }
+        run { session, pid in try session.setMemberLevel(projectId: pid, peerId: m.peerId, level: level) } done: {}
     }
 
     private func stop() {
-        do {
-            try session.stopSharing(projectId: projectId)
-            sharing.refresh(projectId: projectId, session: session)
+        run { session, pid in try session.stopSharing(projectId: pid) } done: {
             onStopped()
             dismiss()
-        } catch {
-            self.error = userMessage(error)
+        }
+    }
+
+    /// Network-bound sharing calls run off the main thread; errors land in the sheet.
+    private func run(_ work: @escaping @Sendable (YasecretSession, String) throws -> Void, done: @escaping () -> Void) {
+        working = true
+        error = nil
+        let (session, pid) = (session, projectId)
+        Task {
+            let failure = await Task.detached { () -> String? in
+                do { try work(session, pid); return nil } catch { return userMessage(error) }
+            }.value
+            working = false
+            if let failure {
+                error = failure
+            } else {
+                await sharing.refresh(projectId: pid, session: session)
+                done()
+            }
         }
     }
 }

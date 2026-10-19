@@ -29,7 +29,7 @@ struct SecretEditorView: View {
     private var existing: FfiSecret? { request.secret }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             Text(existing == nil ? "Add Variable" : "Edit Variable")
                 .font(.title3.bold())
 
@@ -72,7 +72,7 @@ struct SecretEditorView: View {
                 }
             }
 
-            Toggle(isOn: Binding(get: { isSecret }, set: { isSecret = $0; kindTouched = true })) {
+            HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Secret")
                     Text(isSecret
@@ -81,8 +81,11 @@ struct SecretEditorView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Toggle("Secret", isOn: Binding(get: { isSecret }, set: { isSecret = $0; kindTouched = true }))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
             }
-            .toggleStyle(.switch)
 
             HStack {
                 Toggle("Expires", isOn: $expires)
@@ -94,9 +97,7 @@ struct SecretEditorView: View {
                 Spacer()
             }
 
-            if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-            }
+            SheetError(text: error)
 
             HStack {
                 Spacer()
@@ -109,7 +110,7 @@ struct SecretEditorView: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: Layout.sheetMedium)
         .onAppear(perform: prefill)
     }
 
@@ -122,9 +123,13 @@ struct SecretEditorView: View {
             expires = true
             expiryDate = Date(timeIntervalSince1970: TimeInterval(exp))
         }
-        let current = (try? session.getSecretPlaintext(projectId: projectId, secretId: s.id)) ?? ""
-        value = current
-        originalValue = current
+        do {
+            let current = try session.getSecretPlaintext(projectId: projectId, secretId: s.id)
+            value = current
+            originalValue = current
+        } catch {
+            self.error = "Couldn't read the current value: \(userMessage(error))"
+        }
     }
 
     private func save() {

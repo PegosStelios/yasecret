@@ -27,15 +27,13 @@ struct ImportEnvView: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Import into \(envName)").font(.title3.bold())
+        VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
+            Text("Import into “\(envName)”").font(.title3.bold())
             if previewing { previewStep } else { sourceStep }
-            if let error {
-                Text(error).font(.callout).foregroundStyle(.red)
-            }
+            SheetError(text: error)
         }
         .padding(20)
-        .frame(width: 640, height: 480)
+        .frame(width: Layout.sheetLarge, height: 480)
         .onAppear {
             if DevHook.open == "import" {
                 content = DevHook.importText
@@ -120,7 +118,7 @@ struct ImportEnvView: View {
                 }
                 .width(min: 120, ideal: 190)
                 TableColumn("Value") { d in
-                    Text(d.isSecret ? String(repeating: "•", count: min(max(d.value.count, 4), 12)) : d.value)
+                    Text(d.isSecret ? Layout.mask : d.value)
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(d.isSecret ? .secondary : .primary)
                         .lineLimit(1)

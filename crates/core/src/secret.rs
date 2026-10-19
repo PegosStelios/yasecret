@@ -17,6 +17,20 @@ pub fn create(
     caller_id: &str,
     expires_at: Option<i64>,
 ) -> Result<Secret> {
+    create_with_kind(db, env_id, key, plaintext, project_key, caller_id, expires_at, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_with_kind(
+    db: &Db,
+    env_id: &str,
+    key: &str,
+    plaintext: &[u8],
+    project_key: &[u8; 32],
+    caller_id: &str,
+    expires_at: Option<i64>,
+    is_secret: bool,
+) -> Result<Secret> {
     let (enc, nonce) = crypto::encrypt(plaintext, project_key)?;
     let s = Secret {
         id: new_id(),
@@ -28,15 +42,15 @@ pub fn create(
         updated_at: now(),
         created_by: caller_id.to_string(),
         expires_at,
-        is_secret: true,
+        is_secret,
     };
     db.conn().execute(
-        "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
         rusqlite::params![
             &s.id, &s.env_id, &s.key,
             &s.encrypted_value, &s.nonce,
             s.created_at, s.updated_at,
-            &s.created_by, s.expires_at
+            &s.created_by, s.expires_at, s.is_secret
         ],
     )?;
     audit::append(db, caller_id, "created_secret", "secret", &s.id, None)?;

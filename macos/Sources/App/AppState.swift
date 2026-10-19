@@ -21,6 +21,13 @@ final class AppState {
 
     init() {
         installAutoLock()
+        #if DEBUG
+        if let look = ProcessInfo.processInfo.environment["YASECRET_DEV_APPEARANCE"] {
+            DispatchQueue.main.async {
+                NSApp.appearance = NSAppearance(named: look == "light" ? .aqua : .darkAqua)
+            }
+        }
+        #endif
     }
 
     func didUnlock() {
@@ -32,17 +39,19 @@ final class AppState {
     /// Reminds about variables that expired or expire within a week.
     func checkExpiry() {
         guard let session else { return }
-        let now = Int64(Date().timeIntervalSince1970)
-        var items: [(id: String, label: String, expired: Bool)] = []
-        for p in (try? session.listProjects()) ?? [] {
-            for e in (try? session.listEnvironments(projectId: p.id)) ?? [] {
-                for s in (try? session.listSecrets(envId: e.id)) ?? [] {
-                    guard let exp = s.expiresAt, exp < now + 7 * 86_400 else { continue }
-                    items.append((s.id, "\(s.key) (\(p.name)/\(e.name))", exp <= now))
+        Task.detached {
+            let now = Int64(Date().timeIntervalSince1970)
+            var items: [(id: String, label: String, expired: Bool)] = []
+            for p in (try? session.listProjects()) ?? [] {
+                for e in (try? session.listEnvironments(projectId: p.id)) ?? [] {
+                    for s in (try? session.listSecrets(envId: e.id)) ?? [] {
+                        guard let exp = s.expiresAt, exp < now + 7 * 86_400 else { continue }
+                        items.append((s.id, "\(s.key) (\(p.name)/\(e.name))", exp <= now))
+                    }
                 }
             }
+            if !items.isEmpty { NotificationService.shared.notifyExpiring(items) }
         }
-        if !items.isEmpty { NotificationService.shared.notifyExpiring(items) }
     }
 
     func lock() {
