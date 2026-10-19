@@ -34,7 +34,7 @@ pub enum SyncError {
     NotOwner,
     #[error("You already have this project")]
     AlreadyJoined,
-    #[error("Couldn't reach the person who shared this. They need Yasecret open and unlocked; try again in a moment")]
+    #[error("Couldn't reach the person who shared this or an always-on peer. They need Yasecret open and unlocked; try again in a moment")]
     OwnerOffline,
     #[error("This invite link was already used. Ask for a new one")]
     InviteUsed,

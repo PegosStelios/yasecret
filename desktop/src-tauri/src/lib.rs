@@ -84,15 +84,23 @@ struct VaultState {
     dev_password: bool,
 }
 
+/// Async so the Credential Manager and Windows Hello checks stay off the UI thread.
 #[tauri::command]
-fn vault_state(vault: State<'_, Vault>) -> VaultState {
-    VaultState {
+async fn vault_state(vault: State<'_, Vault>) -> CmdResult<VaultState> {
+    let unlocked = vault.session.lock().unwrap().is_some();
+    let db_path = vault.db_path.clone();
+    let (has_remembered, hello) = tauri::async_runtime::spawn_blocking(move || {
+        (keyring_entry(&db_path).and_then(|e| e.get_password().ok()).is_some(), hello::available())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(VaultState {
         first_run: !Path::new(&vault.db_path).exists(),
-        unlocked: vault.session.lock().unwrap().is_some(),
-        has_remembered: keyring_entry(&vault.db_path).and_then(|e| e.get_password().ok()).is_some(),
-        hello: hello::available(),
+        unlocked,
+        has_remembered,
+        hello,
         dev_password: dev_password().is_some(),
-    }
+    })
 }
 
 /// Opens the vault (key derivation runs on a blocking thread) and starts sync in the background.

@@ -41,6 +41,7 @@ impl From<yasecret_core::error::YasecretError> for FfiError {
         match e {
             E::WrongPassword       => FfiError::WrongPassword,
             E::PermissionDenied    => FfiError::PermissionDenied,
+            E::ReadOnly(_)         => FfiError::PermissionDenied,
             E::Crypto              => FfiError::Crypto,
             E::NotFound(m)         => FfiError::NotFound { msg: m },
             E::Db(e)               => FfiError::Db { msg: e.to_string() },

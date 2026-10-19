@@ -182,7 +182,7 @@ struct ShareSheet: View {
                     }
                     .padding(10)
                     .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
-                    Label("Keep Yasecret open and unlocked until they've joined. Devices sync directly, with no server in between.",
+                    Label("Keep Yasecret open and unlocked until they've joined, or add an always-on peer below so they can join while this Mac is off.",
                           systemImage: "antenna.radiowaves.left.and.right")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -282,6 +282,12 @@ struct ShareSheet: View {
                             .disabled(working || cleanedRelayCode.count != 64)
                     }
                 }
+            }
+            if sharing.isOwner && !sharing.relays.isEmpty {
+                Text("A removed peer keeps what it already stored. To cut one off completely, stop sharing and share again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if let relayCommand {
                 Text("Run this on the relay machine:").font(.caption).foregroundStyle(.secondary)

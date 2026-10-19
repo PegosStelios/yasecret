@@ -87,6 +87,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
 
@@ -124,6 +126,7 @@ jobs:
           fi
           xcodebuild -project Yasecret.xcodeproj -scheme Yasecret -configuration Release \
             -derivedDataPath build CODE_SIGN_STYLE=Manual "${sign[@]}" \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="${GITHUB_REF_NAME#v}" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" build
           ditto -c -k --keepParent build/Build/Products/Release/Yasecret.app "$RUNNER_TEMP/Yasecret-macOS.zip"
 

@@ -46,6 +46,7 @@ pub async fn run(args: RelayArgs) -> yasecret_core::Result<()> {
 /// Links go through an inbox so `add` works while the relay holds its data dir.
 fn queue(dir: &Path, link: &str) -> yasecret_core::Result<()> {
     let parsed = RelayLink::parse(link).map_err(sync_err)?;
+
     let inbox = dir.join("inbox");
     std::fs::create_dir_all(&inbox)?;
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();

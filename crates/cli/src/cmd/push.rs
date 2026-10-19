@@ -1,6 +1,5 @@
 use clap::Args;
-use std::collections::HashMap;
-use yasecret_core::{env_file, secret, YasecretError};
+use yasecret_core::{access, env_file, secret, YasecretError};
 
 use super::target::Target;
 
@@ -28,61 +27,32 @@ pub struct PushArgs {
 pub fn run(args: PushArgs) -> yasecret_core::Result<()> {
     let content = std::fs::read_to_string(&args.input)
         .map_err(|e| YasecretError::NotFound(format!("{}: {e}", args.input)))?;
-    let parsed = env_file::parse_any(&content)?;
-    // Later lines win, like dotenv loaders.
-    let mut incoming: Vec<(String, String)> = Vec::new();
-    for (k, v) in parsed {
-        if !env_file::valid_key(&k) {
-            return Err(YasecretError::EnvParse(format!("'{k}' is not a valid variable name")));
-        }
-        incoming.retain(|(existing, _)| existing != &k);
-        incoming.push((k, v));
-    }
-
+    let pairs = env_file::parse_any(&content)?;
     let t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
-    let current: HashMap<String, (String, String)> = secret::list(&t.session.db, &t.env.id)?
-        .into_iter()
-        .map(|s| {
-            let nonce: [u8; 12] = s.nonce.clone().try_into().map_err(|_| YasecretError::Crypto)?;
-            let v = yasecret_core::crypto::decrypt(&s.encrypted_value, &nonce, &t.key)?;
-            Ok((s.key, (s.id, String::from_utf8_lossy(&v).into_owned())))
-        })
-        .collect::<yasecret_core::Result<_>>()?;
-
-    let me = t.session.identity.id.clone();
-    let (mut added, mut updated, mut unchanged, mut skipped) = (0, 0, 0, Vec::new());
-    let tx = t.session.db.conn().unchecked_transaction()?;
-    for (key, value) in &incoming {
-        match current.get(key) {
-            Some((_, old)) if old == value => unchanged += 1,
-            Some((id, _)) if args.overwrite => {
-                if !args.dry_run {
-                    secret::update(&t.session.db, id, value.as_bytes(), &t.key, &me, Some("cli push"))?;
-                }
-                updated += 1;
-            }
-            Some(_) => skipped.push(key.clone()),
-            None => {
-                if !args.dry_run {
-                    secret::create_with_kind(
-                        &t.session.db, &t.env.id, key, value.as_bytes(), &t.key, &me, None, env_file::looks_secret(key),
-                    )?;
-                }
-                added += 1;
-            }
-        }
-    }
-    tx.commit()?;
+    access::ensure_can_write(&t.session.db, &t.project.id)?;
+    let r = secret::merge(
+        &t.session.db,
+        &t.env.id,
+        &pairs,
+        &t.key,
+        &t.session.identity.id,
+        Some("cli push"),
+        args.overwrite,
+        args.dry_run,
+    )?;
 
     let prefix = if args.dry_run { "Would push" } else { "Pushed" };
     println!(
-        "{prefix} to {}/{}: {added} added, {updated} updated, {unchanged} unchanged, {} skipped",
+        "{prefix} to {}/{}: {} added, {} updated, {} unchanged, {} skipped",
         t.project.name,
         t.env.name,
-        skipped.len()
+        r.added,
+        r.updated,
+        r.unchanged,
+        r.skipped.len()
     );
-    if !skipped.is_empty() {
-        println!("Skipped (already exist with a different value; use --overwrite): {}", skipped.join(", "));
+    if !r.skipped.is_empty() {
+        println!("Skipped (already exist with a different value; use --overwrite): {}", r.skipped.join(", "));
     }
     Ok(())
 }

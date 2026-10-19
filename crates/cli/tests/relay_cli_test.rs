@@ -33,9 +33,19 @@ fn relay_add_rejects_garbage_and_queues_valid_links() {
     assert!(!bad.status.success());
     assert!(String::from_utf8_lossy(&bad.stderr).contains("yasecret://relay"));
 
-    let ok = relay(dir.path(), &["add", "yasecret://relay?v=1&n=shop&t=docaaaa"]);
+    let damaged = relay(dir.path(), &["add", "yasecret://relay?v=1&n=shop&t=docaaaa"]);
+    assert!(!damaged.status.success(), "a damaged ticket is caught before queueing");
+    assert!(!dir.path().join("inbox").exists());
+
+    let ok = relay(dir.path(), &["add", &format!("yasecret://relay?v=1&n=shop&t={}", valid_ticket())]);
     assert!(ok.status.success(), "{}", String::from_utf8_lossy(&ok.stderr));
     let queued: Vec<_> = std::fs::read_dir(dir.path().join("inbox")).unwrap().collect();
     assert_eq!(queued.len(), 1);
     assert!(String::from_utf8_lossy(&ok.stdout).contains("yasecret relay"), "tells you to start the relay");
+}
+
+fn valid_ticket() -> String {
+    let ns = iroh_docs::NamespaceSecret::from_bytes(&[3u8; 32]);
+    let node = iroh::SecretKey::from_bytes(&[7u8; 32]).public();
+    iroh_docs::DocTicket::new(iroh_docs::Capability::Read(ns.id()), vec![iroh::EndpointAddr::new(node)]).to_string()
 }

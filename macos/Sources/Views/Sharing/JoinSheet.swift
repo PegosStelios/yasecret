@@ -15,7 +15,7 @@ struct JoinSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
             Text("Join a Shared Project").font(.title3.bold())
-            Text("Paste the invite link you were sent. The person who shared it needs Yasecret open and unlocked while you join.")
+            Text("Paste the invite link you were sent. The person who shared it needs Yasecret open and unlocked while you join, unless the project has an always-on peer.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -58,7 +58,7 @@ struct JoinSheet: View {
             HStack {
                 if joining {
                     ProgressView().controlSize(.small)
-                    Text("Connecting to the owner's computer…").foregroundStyle(.secondary)
+                    Text("Connecting…").foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }

@@ -25,7 +25,7 @@ pub struct DevArgs {
 /// Writes the .env, then rewrites it whenever the environment changes (including changes the
 /// desktop app syncs in from teammates). Runs until interrupted.
 pub fn run(args: DevArgs) -> yasecret_core::Result<()> {
-    let t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
+    let mut t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
     let mut last_fingerprint = None;
     let mut last_keys: Vec<String> = Vec::new();
     eprintln!("Keeping {} in sync with {}/{}. Press Ctrl-C to stop.", args.output, t.project.name, t.env.name);

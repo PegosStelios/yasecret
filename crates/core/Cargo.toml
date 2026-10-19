@@ -5,6 +5,7 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+hex = { workspace = true }
 rusqlite      = { workspace = true }
 aes-gcm       = { workspace = true }
 argon2        = { workspace = true }

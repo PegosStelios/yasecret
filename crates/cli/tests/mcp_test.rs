@@ -200,3 +200,27 @@ fn import_env_malformed_line_returns_error() {
     let result = server.import_env_impl("web", "prod", "NOEQUALS\n");
     assert!(result.contains("error"), "expected error for malformed line, got: {result}");
 }
+
+#[test]
+fn import_env_skips_existing_keys_and_classifies_new_ones() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    use yasecret_core::{environment, project_key, secret};
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), false);
+    let result = server.import_env_impl("web", "prod", "DB_URL=changed\nNEW_PASSWORD=pw\nPORT=80\n");
+    assert!(!result.starts_with("error"), "an existing key must not abort the import: {result}");
+    assert!(result.contains("DB_URL"), "skipped keys are named: {result}");
+
+    let salt: [u8; 16] = std::fs::read(dir.path().join("db.salt")).unwrap().try_into().unwrap();
+    let db_key = crypto::derive_db_key("testpw", &salt);
+    let db = Db::open(&db_path, "testpw").unwrap();
+    let p = project::list(&db).unwrap().into_iter().find(|p| p.name == "web").unwrap();
+    let k = project_key::load(&db, &p.id, &db_key).unwrap();
+    let env = environment::list(&db, &p.id).unwrap().into_iter().find(|e| e.name == "prod").unwrap();
+    let rows = secret::list(&db, &env.id).unwrap();
+    let get = |key: &str| rows.iter().find(|s| s.key == key).map(|s| (String::from_utf8(secret::get_plaintext(&db, &s.id, &k).unwrap().to_vec()).unwrap(), s.is_secret));
+    assert_eq!(get("DB_URL").unwrap().0, "postgres://localhost/mydb");
+    assert_eq!(get("NEW_PASSWORD").unwrap(), ("pw".to_string(), true));
+    assert_eq!(get("PORT").unwrap(), ("80".to_string(), false));
+}

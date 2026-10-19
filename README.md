@@ -33,7 +33,7 @@ The desktop app (Tauri, the Windows build) has the same layout. Shown here runni
 
 ## Install
 
-Tagged versions are published on the [Releases](../../releases) page: a Windows installer (`*-setup.exe` per-user, `.msi` for managed installs) and a macOS app (`Yasecret-macOS.zip`). Between releases, every push to `main` builds Windows installers you can download from the latest [Windows build](../../actions/workflows/windows.yml) run under *Artifacts*.
+Tagged versions are published on the [Releases](../../releases) page: a Windows installer (`*-setup.exe` per-user, `.msi` for managed installs) and a macOS app for Apple silicon and Intel (`Yasecret-macOS.zip`). Between releases, every push to `main` builds Windows installers you can download from the latest [Windows build](../../actions/workflows/windows.yml) run under *Artifacts*.
 
 **Windows.** The app checks for updates on launch and offers to install them. Updates are signed with Yasecret's update key and verified before they're applied. The installer itself isn't code-signed yet, so SmartScreen will warn on first install; choose *More info → Run anyway*.
 
@@ -63,7 +63,7 @@ yasecret relay add 'yasecret://relay?...'
 yasecret relay               # keep this running (systemd, launchd, tmux…)
 ```
 
-The relay gets a read-only copy of the project document. It stores encrypted values and never receives the project key, but it can see what the document itself shows: project, environment and variable names, and member device names. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online.
+The relay gets a read-only copy of the project document. It stores encrypted values and never receives the project key, but it can see what the document itself shows: project, environment and variable names, and member device names. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online (up to a week after the invite expires). Removing a relay stops members from dialing it, but it keeps what it already stored and devices that remember it may keep syncing with it; to cut a relay off completely, stop sharing and share the project again.
 
 Limitations: without a relay, the owner's device must be online for someone to join. Only the owner can invite or change access. Activity logs are kept per device.
 

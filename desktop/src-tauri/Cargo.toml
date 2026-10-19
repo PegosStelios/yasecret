@@ -24,7 +24,9 @@ serde_json = { workspace = true }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 sha2 = { workspace = true }
 hex = { workspace = true }
-tauri-plugin-updater = "2"
+# Without the default "zip" feature: updates are plain signed installers, and the zip
+# crate it pulls in has open advisories (RUSTSEC-2026-0367/0368/0369).
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 tauri-plugin-process = "2"
 
 [target.'cfg(windows)'.dependencies]

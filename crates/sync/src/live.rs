@@ -31,6 +31,9 @@ use zeroize::Zeroizing;
 use crate::{node::SyncNode, Result, SyncError};
 
 pub const INVITE_TTL_SECS: i64 = 24 * 3600;
+/// How long after an invite expires the owner still admits someone who redeemed it in time
+/// (they may have joined through an always-on peer while the owner was offline).
+pub const ADMIT_GRACE_SECS: i64 = 7 * 24 * 3600;
 /// Audit actor for changes that arrived from another device.
 pub const SYNC_ACTOR: &str = "sync";
 const JOIN_TIMEOUT: Duration = Duration::from_secs(45);
@@ -296,7 +299,11 @@ impl RelayLink {
         if get("v")? != "1" {
             return Err(bad("it was made by a different version of Yasecret"));
         }
-        Ok(Self { project_name: percent_decode(get("n")?), ticket: get("t")?.to_string() })
+        let ticket = get("t")?;
+        if ticket.parse::<iroh_docs::DocTicket>().is_err() {
+            return Err(bad("its ticket is damaged — copy the whole link again"));
+        }
+        Ok(Self { project_name: percent_decode(get("n")?), ticket: ticket.to_string() })
     }
 }
 
@@ -639,7 +646,9 @@ impl SyncService {
         Ok(url)
     }
 
-    /// Owner: members stop dialing this peer. It keeps the encrypted copy it already has.
+    /// Owner: members stop dialing this peer. A read-only doc capability can't be revoked, so
+    /// the peer keeps what it stored and devices that remember it may still sync with it;
+    /// stopping sharing (which rotates the key and leaves the doc) cuts it off completely.
     pub fn remove_relay(&self, project_id: &str, code: &str) -> Result<()> {
         let inner = self.inner.clone();
         let (pid, code) = (project_id.to_string(), code.to_string());
@@ -1102,6 +1111,12 @@ impl Inner {
         let members = members_from(entries, &grants, &self.my_peer);
         let mut live = self.live.lock().unwrap();
         let st = live.entry(project_id.to_string()).or_default();
+        if st.my_level.as_deref() != Some(level.as_str()) {
+            // Lets the CLI and MCP server refuse changes that would never sync.
+            if let Ok(db) = self.db() {
+                let _ = db.conn().execute("UPDATE sync_doc SET my_level = ?1 WHERE project_id = ?2", rusqlite::params![&level, project_id]);
+            }
+        }
         st.is_owner = Some(is_owner);
         st.my_level = Some(level);
         st.members = Some(members);
@@ -1548,23 +1563,29 @@ fn admit_members(
             continue;
         }
         // An invite already redeemed by this same peer still qualifies, so a grant whose
-        // publish failed earlier is re-issued instead of leaving the member stuck.
+        // publish failed earlier is re-issued instead of leaving the member stuck. An expired
+        // invite still admits someone who joined before it expired, within the grace period.
+        let in_time = "(expires_at >= ?3 OR (expires_at >= ?5 AND expires_at + ?6 >= ?3))";
         let pending: Option<(String, String)> = match &m.invite_id {
             Some(invite_id) => db
                 .conn()
                 .query_row(
-                    "SELECT id, level FROM sync_invite WHERE id = ?1 AND project_id = ?2 AND kind = 'link'
-                       AND (redeemed_by IS NULL OR redeemed_by = ?4) AND expires_at >= ?3",
-                    rusqlite::params![invite_id, project_id, now(), &m.peer_id],
+                    &format!(
+                        "SELECT id, level FROM sync_invite WHERE id = ?1 AND project_id = ?2 AND kind = 'link'
+                           AND (redeemed_by IS NULL OR redeemed_by = ?4) AND {in_time}"
+                    ),
+                    rusqlite::params![invite_id, project_id, now(), &m.peer_id, m.joined_at, ADMIT_GRACE_SECS],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .ok(),
             None => db
                 .conn()
                 .query_row(
-                    "SELECT id, level FROM sync_invite WHERE project_id = ?1 AND kind = 'device' AND peer_id = ?2
-                       AND (redeemed_by IS NULL OR redeemed_by = ?2) AND expires_at >= ?3",
-                    rusqlite::params![project_id, &m.peer_id, now()],
+                    &format!(
+                        "SELECT id, level FROM sync_invite WHERE project_id = ?1 AND kind = 'device' AND peer_id = ?2
+                           AND (redeemed_by IS NULL OR redeemed_by = ?2) AND {in_time}"
+                    ),
+                    rusqlite::params![project_id, &m.peer_id, now(), &m.peer_id, m.joined_at, ADMIT_GRACE_SECS],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )
                 .ok(),
@@ -1720,7 +1741,14 @@ mod tests {
 
     #[test]
     fn relay_link_roundtrips() {
-        let link = RelayLink { project_name: "Shop / prod".into(), ticket: "docbbb".into() };
+        let ns = iroh_docs::NamespaceSecret::from_bytes(&[3u8; 32]);
+        let node = iroh::SecretKey::from_bytes(&[7u8; 32]).public();
+        let ticket = iroh_docs::DocTicket::new(iroh_docs::Capability::Read(ns.id()), vec![iroh::EndpointAddr::new(node)]);
+        let link = RelayLink { project_name: "Shop / prod".into(), ticket: ticket.to_string() };
+        assert!(matches!(
+            RelayLink::parse("yasecret://relay?v=1&n=x&t=docnotaticket"),
+            Err(SyncError::InvalidLink(_))
+        ));
         assert_eq!(RelayLink::parse(&link.to_url()).unwrap(), link);
         assert!(matches!(RelayLink::parse("yasecret://join?v=2"), Err(SyncError::InvalidLink(_))));
     }
@@ -1744,5 +1772,40 @@ mod tests {
 
         let removed = vec![entry(&owner, &good, false, 10), entry(&owner, &good, true, 11)];
         assert!(valid_relays("p1", &removed, &owner_pub).is_empty());
+    }
+
+    fn expired_link_invite(db: &Db, pid: &str, expired_secs_ago: i64) {
+        db.conn().execute(
+            "INSERT INTO sync_invite (id,project_id,kind,peer_id,level,created_at,expires_at) VALUES ('old',?1,'link',NULL,'editor',0,?2)",
+            rusqlite::params![pid, now() - expired_secs_ago],
+        ).unwrap();
+    }
+
+    fn joined_member(pid: &str, key: &[u8; 32], joined_at: i64) -> RawEntry {
+        let proof = join_proof(key, pid, "latecomer", "late-author");
+        let m = WMember { peer_id: "latecomer".into(), name: "x".into(), joined_at, invite_id: Some("old".into()), proof };
+        RawEntry { key: keys::member("latecomer"), author: "late-author".into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap() }
+    }
+
+    #[test]
+    fn member_who_joined_in_time_is_admitted_after_the_invite_expires() {
+        // Joined through an always-on peer while the owner was offline past the invite's expiry.
+        let (_d, db, me, pid, key) = owner_db();
+        expired_link_invite(&db, &pid, 3600);
+        let m = joined_member(&pid, &key, now() - 2 * 3600);
+        assert_eq!(admit_members(&db, &pid, &[m], &HashMap::new(), &key, &me).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn expired_invites_still_reject_late_joins_and_stale_ones() {
+        let (_d, db, me, pid, key) = owner_db();
+        expired_link_invite(&db, &pid, 3600);
+        let late = joined_member(&pid, &key, now());
+        assert!(admit_members(&db, &pid, &[late], &HashMap::new(), &key, &me).unwrap().is_empty());
+
+        let (_d2, db2, me2, pid2, key2) = owner_db();
+        expired_link_invite(&db2, &pid2, ADMIT_GRACE_SECS + 3600);
+        let in_time = joined_member(&pid2, &key2, now() - ADMIT_GRACE_SECS - 2 * 3600);
+        assert!(admit_members(&db2, &pid2, &[in_time], &HashMap::new(), &key2, &me2).unwrap().is_empty());
     }
 }

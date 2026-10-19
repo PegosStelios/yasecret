@@ -52,7 +52,7 @@ targets:
         Release:
           OTHER_LDFLAGS:
             - "$(inherited)"
-            - "$(SRCROOT)/../target/release/libyasecret_ffi.a"
+            - "$(SRCROOT)/../target/universal/release/libyasecret_ffi.a"
             - "-framework"
             - "Security"
             - "-framework"

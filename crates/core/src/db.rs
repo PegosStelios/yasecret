@@ -154,6 +154,8 @@ impl Db {
             self.conn.execute_batch("UPDATE project SET updated_at = created_at;")?;
         }
         self.add_column("sync_doc", "owner_sign_pub", "TEXT")?;
+        // This device's access level, cached by the sync service for tools that run without it.
+        self.add_column("sync_doc", "my_level", "TEXT")?;
         self.conn.execute_batch("
             CREATE TABLE IF NOT EXISTS tombstone (
                 id         TEXT PRIMARY KEY,

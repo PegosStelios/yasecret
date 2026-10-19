@@ -13,6 +13,8 @@ name = "yasecret_cli"
 path = "src/lib.rs"
 
 [dev-dependencies]
+iroh          = { workspace = true }
+iroh-docs     = { workspace = true }
 tempfile      = { workspace = true }
 yasecret-core = { path = "../core" }
 

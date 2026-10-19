@@ -246,16 +246,21 @@ impl YasecretServer {
             Ok(id) => id,
             Err(e) => return format!("error loading identity: {e}"),
         };
-        let mut count = 0;
-        for (key, value) in &pairs {
-            match yasecret_core::secret::create(
-                &db, &env.id, key, value.as_bytes(), &proj_key, &identity.id, None,
-            ) {
-                Ok(_) => count += 1,
-                Err(e) => return format!("error importing key '{key}': {e}"),
-            }
+        if let Err(e) = yasecret_core::access::ensure_can_write(&db, &proj.id) {
+            return format!("error: {e}");
         }
-        format!("imported {count} secret(s)")
+        // Existing keys are never overwritten from here; the user changes those in the app.
+        match yasecret_core::secret::merge(&db, &env.id, &pairs, &proj_key, &identity.id, Some("mcp import"), false, false) {
+            Ok(r) if r.skipped.is_empty() => format!("imported {} variable(s), {} already up to date", r.added, r.unchanged),
+            Ok(r) => format!(
+                "imported {} variable(s), {} already up to date; left {} existing key(s) unchanged: {}",
+                r.added,
+                r.unchanged,
+                r.skipped.len(),
+                r.skipped.join(", ")
+            ),
+            Err(e) => format!("error: {e}"),
+        }
     }
 
     fn resolve_project_env(

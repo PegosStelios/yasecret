@@ -26,8 +26,10 @@ impl Target {
         Ok(Self { session, project, env, key })
     }
 
-    /// Current variables as (key, value), sorted by key.
-    pub fn pairs(&self) -> yasecret_core::Result<Vec<(String, String)>> {
+    /// Current variables as (key, value), sorted by key. Reloads the project key, which
+    /// changes when the project's key is rotated (a member removed, sharing stopped).
+    pub fn pairs(&mut self) -> yasecret_core::Result<Vec<(String, String)>> {
+        self.key = project_key::load(&self.session.db, &self.project.id, &self.session.db_key)?;
         secret::list(&self.session.db, &self.env.id)?
             .into_iter()
             .map(|s| {

@@ -148,3 +148,60 @@ fn dev_rewrites_the_file_when_the_vault_changes() {
     assert!(first, "initial write never happened");
     assert!(second, "file was not updated after the vault changed");
 }
+
+#[test]
+fn push_refuses_a_project_shared_with_me_view_only() {
+    let v = Vault::new();
+    {
+        let db = Db::open(&v.dir.path().join("db.sqlite"), "testpw").unwrap();
+        db.conn()
+            .execute(
+                "INSERT INTO sync_doc (project_id, doc_id, ticket, owner_sign_pub, my_level) VALUES (?1, 'doc', NULL, ?2, 'viewer')",
+                rusqlite::params![&v.project_id, "11".repeat(32)],
+            )
+            .unwrap();
+    }
+    let f = v.file(".env", "API_KEY=hijack\nNEW=1\n");
+    let out = v.cmd(&["push", "-p", "shop", "-e", "dev", "-i", &f, "--overwrite"]);
+    assert!(!out.status.success(), "a viewer's push must be refused");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("view"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(v.value("API_KEY").unwrap().0, "old-key");
+    assert!(v.value("NEW").is_none());
+}
+
+#[test]
+fn dev_keeps_working_after_the_project_key_is_rotated() {
+    let v = Vault::new();
+    let target = v.dir.path().join("rotated.env");
+    let mut child = Command::new(bin())
+        .args(["dev", "-p", "shop", "-e", "dev", "-o", target.to_str().unwrap(), "--interval", "1"])
+        .args(["--db", &v.db_path(), "--password", "testpw"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let wait_for = |needle: &str| {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < deadline {
+            if std::fs::read_to_string(&target).map(|t| t.contains(needle)).unwrap_or(false) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        false
+    };
+    let first = wait_for("API_KEY=old-key");
+    {
+        // Removing a member or stopping sharing re-encrypts everything with a new key.
+        let db = Db::open(&v.dir.path().join("db.sqlite"), "testpw").unwrap();
+        let k = project_key::rotate(&db, &v.project_id, &v.db_key).unwrap();
+        secret::create(&db, &v.env_id, "AFTER_ROTATE", b"yes", &k, "owner", None).unwrap();
+    }
+    let second = wait_for("AFTER_ROTATE=yes");
+    let alive = child.try_wait().unwrap().is_none();
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(first);
+    assert!(alive, "dev must not exit after a key rotation");
+    assert!(second, "file not updated after rotation");
+}

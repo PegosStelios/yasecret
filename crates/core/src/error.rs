@@ -12,6 +12,9 @@ pub enum YasecretError {
     NotFound(String),
     #[error("permission denied")]
     PermissionDenied,
+    /// A shared project this device may read but not change.
+    #[error("{0}")]
+    ReadOnly(String),
     #[error("invalid .env format: {0}")]
     EnvParse(String),
     #[error("io error: {0}")]

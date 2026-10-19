@@ -1,3 +1,4 @@
+pub mod access;
 pub mod audit;
 pub mod crypto;
 pub mod db;

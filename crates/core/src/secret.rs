@@ -203,3 +203,65 @@ pub(crate) fn get_raw(db: &Db, id: &str) -> Result<Secret> {
         )
         .map_err(|_| YasecretError::NotFound(format!("secret {id}")))
 }
+
+/// What `merge` did (or, with `dry_run`, would do).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct MergeReport {
+    pub added: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+    /// Existing keys with a different value, left alone because `overwrite` was off.
+    pub skipped: Vec<String>,
+}
+
+/// Brings `pairs` into an environment in one transaction. New keys are added (stored as
+/// secrets when the name looks sensitive), existing keys are updated only with `overwrite`.
+/// Later pairs win over earlier ones with the same key, like dotenv loaders.
+#[allow(clippy::too_many_arguments)]
+pub fn merge(
+    db: &Db,
+    env_id: &str,
+    pairs: &[(String, String)],
+    project_key: &[u8; 32],
+    caller_id: &str,
+    note: Option<&str>,
+    overwrite: bool,
+    dry_run: bool,
+) -> Result<MergeReport> {
+    let mut incoming: Vec<(&str, &str)> = Vec::new();
+    for (k, v) in pairs {
+        if !crate::env_file::valid_key(k) {
+            return Err(crate::error::YasecretError::EnvParse(format!("'{k}' is not a valid variable name")));
+        }
+        incoming.retain(|(existing, _)| *existing != k.as_str());
+        incoming.push((k, v));
+    }
+    let mut current = std::collections::HashMap::new();
+    for s in list(db, env_id)? {
+        let v = get_plaintext(db, &s.id, project_key)?;
+        current.insert(s.key, (s.id, v.to_vec()));
+    }
+
+    let mut report = MergeReport::default();
+    let tx = db.conn().unchecked_transaction()?;
+    for (key, value) in incoming {
+        match current.get(key) {
+            Some((_, old)) if old.as_slice() == value.as_bytes() => report.unchanged += 1,
+            Some((id, _)) if overwrite => {
+                if !dry_run {
+                    update(db, id, value.as_bytes(), project_key, caller_id, note)?;
+                }
+                report.updated += 1;
+            }
+            Some(_) => report.skipped.push(key.to_string()),
+            None => {
+                if !dry_run {
+                    create_with_kind(db, env_id, key, value.as_bytes(), project_key, caller_id, None, crate::env_file::looks_secret(key))?;
+                }
+                report.added += 1;
+            }
+        }
+    }
+    tx.commit()?;
+    Ok(report)
+}

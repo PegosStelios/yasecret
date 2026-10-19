@@ -122,6 +122,9 @@ function RelaySection({ projectId, isOwner, onError }: { projectId: string; isOw
           <Button disabled={!canAdd} onClick={add}>{busy ? "Adding…" : "Add"}</Button>
         </div>
       )}
+      {isOwner && relays.length > 0 && (
+        <p className="mt-2 text-xs text-muted">A removed peer keeps what it already stored. To cut one off completely, stop sharing and share again.</p>
+      )}
       {command && (
         <div className="mt-2 space-y-1.5">
           <p className="text-xs text-muted">Run this on the relay machine:</p>
@@ -212,7 +215,7 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
           {link && (
             <>
               <CopyBox text={link} sensitive={mode === "link"} onError={setError} />
-              <p className="flex items-center gap-1.5 text-xs text-muted"><Radio size={13} /> Keep Yasecret open and unlocked until they've joined. Devices sync directly, with no server in between.</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted"><Radio size={13} /> Keep Yasecret open and unlocked until they've joined, or add an always-on peer below so they can join while this computer is off.</p>
             </>
           )}
         </div>
@@ -318,13 +321,13 @@ export function JoinSheet({ initialLink, onJoined, onClose }: { initialLink: str
       onEnter={join}
       footer={
         <>
-          {busy && <span className="mr-auto text-muted">Connecting to the owner's computer…</span>}
+          {busy && <span className="mr-auto text-muted">Connecting…</span>}
           <Button onClick={onClose} disabled={busy}>Cancel</Button>
           <Button variant="primary" disabled={!canJoin} onClick={join}>Join</Button>
         </>
       }
     >
-      <p className="mb-3 text-muted">Paste the invite link you were sent. The person who shared it needs Yasecret open and unlocked while you join.</p>
+      <p className="mb-3 text-muted">Paste the invite link you were sent. The person who shared it needs Yasecret open and unlocked while you join, unless the project has an always-on peer.</p>
       <textarea
         value={link}
         disabled={busy}

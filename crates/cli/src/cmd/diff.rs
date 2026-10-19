@@ -24,7 +24,7 @@ pub fn run(args: DiffArgs) -> yasecret_core::Result<bool> {
     let content = std::fs::read_to_string(&args.input)
         .map_err(|e| YasecretError::NotFound(format!("{}: {e}", args.input)))?;
     let local: BTreeMap<String, String> = env_file::parse_any(&content)?.into_iter().collect();
-    let t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
+    let mut t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
     let vault: BTreeMap<String, String> = t.pairs()?.into_iter().collect();
 
     let mut lines = Vec::new();

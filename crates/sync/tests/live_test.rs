@@ -11,6 +11,7 @@ use yasecret_sync::{
 
 struct Device {
     _dir: TempDir,
+    name: String,
     db_path: PathBuf,
     db_key: [u8; 32],
     svc: Option<SyncService>,
@@ -30,7 +31,24 @@ impl Device {
             device_name: name.into(),
         })
         .unwrap();
-        Self { _dir: dir, db_path, db_key, svc: Some(svc) }
+        Self { _dir: dir, name: name.into(), db_path, db_key, svc: Some(svc) }
+    }
+
+    /// Starts the sync service again on the same vault, like reopening the app.
+    fn restart(&mut self) {
+        if let Some(svc) = self.svc.take() {
+            svc.shutdown();
+        }
+        self.svc = Some(
+            SyncService::start(SyncConfig {
+                db_path: self.db_path.clone(),
+                db_password: "pw".into(),
+                db_key: self.db_key,
+                data_dir: self._dir.path().join("sync"),
+                device_name: self.name.clone(),
+            })
+            .unwrap(),
+        );
     }
 
     fn svc(&self) -> &SyncService {
@@ -99,6 +117,12 @@ fn share_join_edit_delete_roundtrip() {
         owner.svc().members(&pid).unwrap().iter().any(|m| m.name == "member-mac" && m.level == "editor")
     });
     eventually("member sees its editor access", 15, || member.svc().status(&pid).unwrap().my_level == "editor");
+    let cached: Option<String> = member
+        .db()
+        .conn()
+        .query_row("SELECT my_level FROM sync_doc WHERE project_id = ?1", [&pid], |r| r.get(0))
+        .unwrap();
+    assert_eq!(cached.as_deref(), Some("editor"), "level is cached for the CLI");
 
     // Member edits a value → owner sees it.
     {
@@ -225,11 +249,17 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
         owner.svc().relays(&pid).unwrap().iter().any(|r| r.code == relay.code() && r.name == "office server" && r.online)
     });
 
-    let invite = owner.svc().create_invite(&pid, None, "editor").unwrap();
-    // Wait until the relay holds the invite (and everything else) before the owner leaves.
     let have = |rt: &tokio::runtime::Runtime| rt.block_on(relay.projects()).unwrap().first().map(|p| p.entries).unwrap_or(0);
-    let owner_entries = 5; // project, env, secret, owner grant, invite (+ relay entry)
-    eventually("relay stores the project", 40, || have(&rt) > owner_entries);
+    // Let the relay settle on everything written so far, then count the invite on top of it.
+    let mut settled = 0;
+    eventually("relay stores the project", 40, || {
+        let n = have(&rt);
+        let stable = n > 0 && n == settled;
+        settled = n;
+        stable
+    });
+    let invite = owner.svc().create_invite(&pid, None, "editor").unwrap();
+    eventually("relay stores the invite before the owner leaves", 40, || have(&rt) > settled);
     owner.svc.take().unwrap().shutdown();
 
     let member = Device::new("member");
@@ -241,5 +271,11 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
 
     // A relay can't be added by anyone but the owner.
     assert!(matches!(member.svc().add_relay(&pid, &relay.code(), "x"), Err(SyncError::NotOwner)));
+
+    // The owner comes back, learns about the new member through the relay and admits them.
+    owner.restart();
+    eventually("owner admits the member who joined via the relay", 60, || {
+        member.svc().status(&pid).unwrap().my_level == "editor"
+    });
     rt.block_on(relay.shutdown());
 }
