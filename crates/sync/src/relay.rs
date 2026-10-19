@@ -121,6 +121,28 @@ impl Relay {
         Ok(())
     }
 
+    /// Every stored entry's content, for checking what a relay can see.
+    pub async fn entry_contents(&self) -> Result<Vec<Vec<u8>>> {
+        let mut list = self.node.client().list().await.map_err(anyhow::Error::from)?;
+        let mut ids = Vec::new();
+        while let Some(item) = list.next().await {
+            ids.push(item.map_err(anyhow::Error::from)?.0);
+        }
+        let mut out = Vec::new();
+        for id in ids {
+            let Some(doc) = self.node.client().open(id).await.map_err(anyhow::Error::from)? else { continue };
+            let stream = doc.get_many(iroh_docs::store::Query::all()).await.map_err(anyhow::Error::from)?;
+            tokio::pin!(stream);
+            while let Some(entry) = stream.next().await {
+                let entry = entry.map_err(anyhow::Error::from)?;
+                if let Ok(bytes) = self.node.blob_store().blobs().get_bytes(entry.content_hash()).await {
+                    out.push(bytes.to_vec());
+                }
+            }
+        }
+        Ok(out)
+    }
+
     pub async fn shutdown(&self) {
         self.node.shutdown().await;
     }

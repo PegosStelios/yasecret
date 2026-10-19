@@ -161,6 +161,51 @@ mod keys {
     pub fn relay(code: &str) -> String { format!("v2/relay/{code}") }
 }
 
+// ── Sealed records ────────────────────────────────────────────────────────────
+//
+// Project, environment, variable and member records are encrypted whole with the project
+// key, so a relay or anyone holding a doc ticket sees no names. Grants, invites, key
+// handoffs and relay records stay readable: they're what a device needs before it has the key.
+
+fn is_sealed_key(key: &str) -> bool {
+    key == keys::PROJECT || key.starts_with("v2/env/") || key.starts_with("v2/secret/") || key.starts_with("v2/member/")
+}
+
+#[derive(Serialize, Deserialize)]
+struct Sealed {
+    sealed: Vec<u8>,
+    nonce: Vec<u8>,
+}
+
+fn seal(project_key: &[u8; 32], plain: &[u8]) -> Result<Vec<u8>> {
+    let (sealed, nonce) = crypto::encrypt(plain, project_key)?;
+    Ok(serde_json::to_vec(&Sealed { sealed, nonce: nonce.to_vec() })?)
+}
+
+/// Opens sealed records. Ones this key can't open (sealed before a key rotation, or by a
+/// device that hasn't caught up) are dropped, so they count as missing and get re-sealed.
+fn open_entries(entries: Vec<RawEntry>, project_key: &[u8; 32]) -> Vec<RawEntry> {
+    entries
+        .into_iter()
+        .filter_map(|mut e| {
+            if !is_sealed_key(&e.key) {
+                return Some(e);
+            }
+            match serde_json::from_slice::<Sealed>(&e.content) {
+                Ok(s) => {
+                    let nonce: [u8; 12] = s.nonce.try_into().ok()?;
+                    e.content = crypto::decrypt(&s.sealed, &nonce, project_key).ok()?.to_vec();
+                    Some(e)
+                }
+                Err(_) => {
+                    e.legacy = true;
+                    Some(e)
+                }
+            }
+        })
+        .collect()
+}
+
 /// Binds a membership claim to the project key, so holding the doc ticket alone can't admit anyone.
 pub fn join_proof(project_key: &[u8; 32], project_id: &str, peer_id: &str, author: &str) -> Vec<u8> {
     hmac_sha256(project_key, format!("yasecret-join-v2|{project_id}|{peer_id}|{author}").as_bytes()).to_vec()
@@ -446,6 +491,8 @@ struct RawEntry {
     author: String,
     timestamp: u64,
     content: Vec<u8>,
+    /// A record that should be sealed but was written in plaintext by an older version.
+    legacy: bool,
 }
 
 impl SyncService {
@@ -911,6 +958,7 @@ impl Inner {
                 author: entry.author().to_string(),
                 timestamp: entry.timestamp(),
                 content: bytes.to_vec(),
+                legacy: false,
             });
         }
         Ok(out)
@@ -1017,7 +1065,6 @@ impl Inner {
                 .map(|g| g.author.as_str())
                 .collect();
             let by_owner = |key: &str| latest(&entries, key, |a| owner_authors.contains(a));
-            let project = by_owner(keys::PROJECT).and_then(|e| serde_json::from_slice::<WProject>(&e.content).ok());
             let key = match &invite.secret {
                 InviteSecret::Link { invite_id, key } => {
                     let k = keys::invite(invite_id);
@@ -1046,6 +1093,17 @@ impl Inner {
                         .map(|k| (k, None))
                 }).flatten(),
             };
+            // The project record is sealed: it can only be read once the key is known.
+            let project = key.as_ref().and_then(|(k, _)| {
+                let opened = open_entries(entries.iter().filter(|e| e.key == keys::PROJECT).map(|e| RawEntry {
+                    key: e.key.clone(),
+                    author: e.author.clone(),
+                    timestamp: e.timestamp,
+                    content: e.content.clone(),
+                    legacy: false,
+                }).collect(), k);
+                latest(&opened, keys::PROJECT, |a| owner_authors.contains(a)).and_then(|e| serde_json::from_slice::<WProject>(&e.content).ok())
+            });
             if std::env::var_os("YASECRET_SYNC_DEBUG").is_some() {
                 eprintln!(
                     "[join] entries={} grants={} owner_authors={} project={} key={}",
@@ -1087,7 +1145,7 @@ impl Inner {
         }
         let proof = join_proof(&project_key_bytes, &project.id, &self.my_peer, &self.author.to_string());
         let member = WMember { peer_id: self.my_peer.clone(), name: self.device_name.clone(), joined_at: now(), invite_id, proof };
-        self.write(&doc, &keys::member(&self.my_peer), serde_json::to_vec(&member)?).await?;
+        self.write(&doc, &keys::member(&self.my_peer), seal(&project_key_bytes, &serde_json::to_vec(&member)?)?).await?;
         self.reconcile(&project.id).await?;
         self.revision.fetch_add(1, Ordering::SeqCst);
         Ok(project.id)
@@ -1099,7 +1157,8 @@ impl Inner {
         }
         let Some(info) = self.doc_info(project_id)? else { return Ok(vec![]) };
         let doc = self.open_doc(&info.doc_id).await?;
-        let entries = self.read_entries(&doc).await?;
+        let key = project_key::load(&self.db()?, project_id, &self.db_key)?;
+        let entries = open_entries(self.read_entries(&doc).await?, &key);
         let grants = valid_grants(project_id, &entries, &info.owner_sign_pub);
         Ok(members_from(&entries, &grants, &self.my_peer))
     }
@@ -1162,7 +1221,8 @@ impl Inner {
         let _guard = self.reconcile_lock.lock().await;
         let Some(info) = self.doc_info(project_id)? else { return Ok(()) };
         let doc = self.open_doc(&info.doc_id).await?;
-        let entries = self.read_entries(&doc).await?;
+        let key_before = project_key::load(&self.db()?, project_id, &self.db_key)?;
+        let entries = open_entries(self.read_entries(&doc).await?, &key_before);
         self.refresh_cache(project_id, &info, &entries);
         self.dial_relays(project_id, &doc).await;
         let me = self.clone();
@@ -1175,16 +1235,23 @@ impl Inner {
         })
         .await
         .map_err(|e| SyncError::Iroh(anyhow::anyhow!("{e}")))??;
+        // The plan may have switched to a rotated key; seal with the one now in use.
+        let key_now = project_key::load(&self.db()?, project_id, &self.db_key)?;
         let wrote = !plan.pushes.is_empty();
         for (key, value) in plan.pushes {
+            let value = if is_sealed_key(&key) { seal(&key_now, &value)? } else { value };
             self.write(&doc, &key, value).await?;
         }
         if wrote {
-            let entries = self.read_entries(&doc).await?;
+            let entries = open_entries(self.read_entries(&doc).await?, &key_now);
             self.refresh_cache(project_id, &info, &entries);
         }
         if plan.changed_local {
             self.revision.fetch_add(1, Ordering::SeqCst);
+        }
+        if *key_now != *key_before {
+            // Records sealed with the new key were skipped this pass.
+            self.schedule(project_id.to_string(), Duration::from_millis(100));
         }
         Ok(())
     }
@@ -1273,6 +1340,14 @@ fn plan_reconcile(
         plan.pushes.extend(admit_members(db, project_id, entries, &grants, &project_key, &inner.identity)?);
     }
 
+    // A member record sealed with a replaced key can't be read any more: publish it again.
+    if !am_owner && grants.get(&inner.my_peer).is_some_and(|g| g.author == my_author && g.level != LEVEL_REMOVED)
+        && latest(entries, &keys::member(&inner.my_peer), |a| a == my_author).is_none()
+    {
+        let m = WMember { peer_id: inner.my_peer.clone(), name: inner.device_name.clone(), joined_at: now(), invite_id: None, proof: vec![] };
+        plan.pushes.push((keys::member(&inner.my_peer), serde_json::to_vec(&m)?));
+    }
+
     let writer_authors: HashSet<String> = grants
         .values()
         .filter(|g| g.level == LEVEL_OWNER || g.level == LEVEL_EDITOR)
@@ -1294,6 +1369,19 @@ fn plan_reconcile(
                     plan.changed_local = true;
                 }
             }
+        }
+    }
+
+    // Records written in plaintext by older versions: the owner publishes them again, sealed.
+    if am_owner {
+        let mut latest_by_key: HashMap<&str, &RawEntry> = HashMap::new();
+        for e in entries.iter().filter(|e| is_sealed_key(&e.key)) {
+            if latest_by_key.get(e.key.as_str()).is_none_or(|p| e.timestamp > p.timestamp) {
+                latest_by_key.insert(&e.key, e);
+            }
+        }
+        for e in latest_by_key.values().filter(|e| e.legacy && writer_authors.contains(&e.author)) {
+            plan.pushes.push((e.key.clone(), e.content.clone()));
         }
     }
 
@@ -1645,7 +1733,7 @@ mod tests {
 
     fn member_entry(peer: &str, author: &str, invite: Option<&str>, proof: Vec<u8>) -> RawEntry {
         let m = WMember { peer_id: peer.into(), name: "x".into(), joined_at: 1, invite_id: invite.map(String::from), proof };
-        RawEntry { key: keys::member(peer), author: author.into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap() }
+        RawEntry { key: keys::member(peer), author: author.into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap(), legacy: false }
     }
 
     #[test]
@@ -1769,7 +1857,7 @@ mod tests {
         let entry = |signer: &Identity, code: &str, removed: bool, at: i64| {
             let msg = relay_msg("p1", code, "box", at, removed);
             let r = WRelay { code: code.into(), name: "box".into(), added_at: at, removed, signature: crypto::sign(msg.as_bytes(), &signer.signing_key()) };
-            RawEntry { key: keys::relay(code), author: "a".into(), timestamp: at as u64, content: serde_json::to_vec(&r).unwrap() }
+            RawEntry { key: keys::relay(code), author: "a".into(), timestamp: at as u64, content: serde_json::to_vec(&r).unwrap(), legacy: false }
         };
         let good = "aa".repeat(32);
         let forged = "bb".repeat(32);
@@ -1792,7 +1880,7 @@ mod tests {
     fn joined_member(pid: &str, key: &[u8; 32], joined_at: i64) -> RawEntry {
         let proof = join_proof(key, pid, "latecomer", "late-author");
         let m = WMember { peer_id: "latecomer".into(), name: "x".into(), joined_at, invite_id: Some("old".into()), proof };
-        RawEntry { key: keys::member("latecomer"), author: "late-author".into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap() }
+        RawEntry { key: keys::member("latecomer"), author: "late-author".into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap(), legacy: false }
     }
 
     #[test]
@@ -1815,5 +1903,24 @@ mod tests {
         expired_link_invite(&db2, &pid2, ADMIT_GRACE_SECS + 3600);
         let in_time = joined_member(&pid2, &key2, now() - ADMIT_GRACE_SECS - 2 * 3600);
         assert!(admit_members(&db2, &pid2, &[in_time], &HashMap::new(), &key2, &me2).unwrap().is_empty());
+    }
+
+    #[test]
+    fn sealed_records_open_with_the_right_key_only_and_legacy_plaintext_is_flagged() {
+        let (k1, k2) = ([1u8; 32], [2u8; 32]);
+        let env = br#"{"id":"e1","name":"prod","created_at":1,"updated_at":1,"deleted":false}"#;
+        let raw = |key: &str, content: Vec<u8>| RawEntry { key: key.into(), author: "a".into(), timestamp: 1, content, legacy: false };
+        let entries = vec![
+            raw(&keys::env("e1"), seal(&k1, env).unwrap()),
+            raw(&keys::env("e2"), seal(&k2, env).unwrap()),
+            raw(&keys::env("e3"), env.to_vec()),
+            raw(&keys::grant("p"), b"{}".to_vec()),
+        ];
+        assert!(!String::from_utf8_lossy(&entries[0].content).contains("prod"), "sealed content hides names");
+        let opened = open_entries(entries, &k1);
+        let keys_seen: Vec<&str> = opened.iter().map(|e| e.key.as_str()).collect();
+        assert_eq!(keys_seen, vec!["v2/env/e1", "v2/env/e3", "v2/grant/p"], "a record sealed with another key counts as missing");
+        assert_eq!(opened[0].content, env.to_vec());
+        assert!(!opened[0].legacy && opened[1].legacy && !opened[2].legacy);
     }
 }

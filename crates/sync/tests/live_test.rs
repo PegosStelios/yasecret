@@ -225,13 +225,13 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
     // Goes through iroh's public discovery and relay servers, so waits are generous.
     use yasecret_sync::relay::Relay;
 
-    let mut owner = Device::new("owner");
+    let mut owner = Device::new("alice-laptop");
     let (pid, env_id) = {
         let db = owner.db();
-        let p = project::create(&db, "always-on", None, "owner").unwrap();
+        let p = project::create(&db, "always-on", Some("billing stack"), "owner").unwrap();
         project_key::create(&db, &p.id, &owner.db_key).unwrap();
         let pk = project_key::load(&db, &p.id, &owner.db_key).unwrap();
-        let env = environment::create(&db, &p.id, "dev").unwrap();
+        let env = environment::create(&db, &p.id, "staging-eu").unwrap();
         secret::create(&db, &env.id, "SECRET", b"from-owner", &pk, "owner", None).unwrap();
         (p.id, env.id)
     };
@@ -262,6 +262,16 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
     let invite = owner.svc().create_invite(&pid, None, "editor").unwrap();
     eventually("relay stores the invite before the owner leaves", 90, || have(&rt) > settled);
     owner.svc.take().unwrap().shutdown();
+
+    // The relay only ever holds sealed records: no project, environment, variable or device names.
+    let stored = rt.block_on(relay.entry_contents()).unwrap();
+    assert!(!stored.is_empty());
+    for needle in ["always-on", "billing stack", "staging-eu", "SECRET", "alice-laptop", "from-owner"] {
+        assert!(
+            !stored.iter().any(|c| c.windows(needle.len()).any(|w| w == needle.as_bytes())),
+            "relay can read {needle:?}"
+        );
+    }
 
     let member = Device::new("member");
     assert_eq!(member.svc().join(&invite).unwrap(), pid, "join must succeed through the relay alone");
