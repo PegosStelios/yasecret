@@ -554,7 +554,11 @@ impl SyncService {
                 .map_err(anyhow::Error::from)?;
             // Always-on peers let the joiner get in while this computer is off.
             let entries = inner.read_entries(&doc).await?;
-            ticket.nodes.extend(valid_relays(&project_id, &entries, &info.owner_sign_pub).iter().filter_map(|r| relay_addr(&r.code)));
+            for r in valid_relays(&project_id, &entries, &info.owner_sign_pub) {
+                if let Ok(pk) = r.code.parse::<iroh::PublicKey>() {
+                    ticket.nodes.push(inner.node.known_addr(pk).await);
+                }
+            }
             let (name, project_key) = {
                 let db = inner.db()?;
                 let p = yasecret_core::project::get(&db, &project_id)?;
@@ -1125,25 +1129,29 @@ impl Inner {
 
     /// Dials always-on peers that aren't connected, at most every `RECONCILE_EVERY`.
     async fn dial_relays(&self, project_id: &str, doc: &iroh_docs::api::Doc) {
-        let addrs: Vec<iroh::EndpointAddr> = {
+        let ids: Vec<iroh::PublicKey> = {
             let mut live = self.live.lock().unwrap();
             let st = live.entry(project_id.to_string()).or_default();
             if st.last_relay_dial.is_some_and(|t| t.elapsed() < RECONCILE_EVERY) {
                 return;
             }
-            let addrs: Vec<_> = st
+            let ids: Vec<_> = st
                 .relays
                 .iter()
                 .flatten()
                 .filter(|r| !st.neighbors.contains(&r.code))
-                .filter_map(|r| relay_addr(&r.code))
+                .filter_map(|r| r.code.parse().ok())
                 .collect();
-            if !addrs.is_empty() {
+            if !ids.is_empty() {
                 st.last_relay_dial = Some(std::time::Instant::now());
             }
-            addrs
+            ids
         };
-        if !addrs.is_empty() {
+        if !ids.is_empty() {
+            let mut addrs = Vec::new();
+            for id in ids {
+                addrs.push(self.node.known_addr(id).await);
+            }
             let _ = doc.start_sync(addrs).await;
         }
     }

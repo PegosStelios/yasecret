@@ -75,6 +75,15 @@ impl SyncNode {
         hex::encode(self.router.endpoint().id().as_bytes())
     }
 
+    /// Address for a peer: every address this node currently knows for it (from an existing
+    /// connection), so others can dial it without waiting on discovery. ID-only if unknown.
+    pub async fn known_addr(&self, id: iroh::PublicKey) -> iroh::EndpointAddr {
+        match self.router.endpoint().remote_info(id).await {
+            Some(info) => iroh::EndpointAddr::from_parts(id, info.into_addrs().map(|a| a.into_addr())),
+            None => iroh::EndpointAddr::new(id),
+        }
+    }
+
     /// Access the iroh-docs API (create, import, open docs; create authors).
     pub fn client(&self) -> &iroh_docs::api::DocsApi {
         self.docs.api()
