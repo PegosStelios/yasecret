@@ -72,8 +72,10 @@ export const api = {
     invoke<ImportSummary>("apply_import", { projectId, envId, items, overwrite }),
   exportVariables: (a: { projectId: string; envId: string; format: ExportFormat; keys: string[] | null; includeSecretValues: boolean; name: string }) =>
     invoke<string>("export_variables", a),
-  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
-  writeTextFile: (path: string, contents: string) => invoke<void>("write_text_file", { path, contents }),
+  /** Native open dialog; resolves to [file name, text], or null when cancelled. */
+  openTextFile: () => invoke<[string, string] | null>("open_text_file"),
+  /** Native save dialog; resolves to the saved file's name, or null when cancelled. */
+  saveTextFile: (defaultName: string, contents: string) => invoke<string | null>("save_text_file", { defaultName, contents }),
   copyText: (text: string, sensitive: boolean) => invoke<void>("copy_text", { text, sensitive }),
 
   listVersions: (projectId: string, secretId: string) => invoke<Version[]>("list_versions", { projectId, secretId }),

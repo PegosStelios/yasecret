@@ -362,14 +362,43 @@ async fn export_variables(
     blocking(&vault, move |s| s.export_variables(project_id, env_id, format, keys, include_secret_values, name)).await
 }
 
+/// Shows an open dialog and returns the chosen file's name and text, or None when cancelled.
+/// The dialog runs here rather than in the webview, so the page never handles file paths.
 #[tauri::command]
-fn read_text_file(path: String) -> CmdResult<String> {
-    std::fs::read_to_string(&path).map_err(|e| format!("Couldn't read {path}: {e}"))
+async fn open_text_file(app: tauri::AppHandle) -> CmdResult<Option<(String, String)>> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(picked) = app.dialog().file().blocking_pick_file() else { return Ok(None) };
+        let path = picked.into_path().map_err(|e| e.to_string())?;
+        let text = std::fs::read_to_string(&path).map_err(|e| format!("Couldn't read {}: {e}", path.display()))?;
+        Ok(Some((file_name(&path), text)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
+/// Shows a save dialog and writes `contents` (readable only by this user on Unix).
+/// Returns the saved file's name, or None when cancelled.
 #[tauri::command]
-fn write_text_file(path: String, contents: String) -> CmdResult<()> {
-    std::fs::write(&path, contents).map_err(|e| format!("Couldn't write {path}: {e}"))
+async fn save_text_file(app: tauri::AppHandle, default_name: String, contents: String) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(picked) = app.dialog().file().set_file_name(&default_name).blocking_save_file() else { return Ok(None) };
+        let path = picked.into_path().map_err(|e| e.to_string())?;
+        std::fs::write(&path, contents).map_err(|e| format!("Couldn't write {}: {e}", path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+        Ok(Some(file_name(&path)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
 }
 
 /// Copies text; sensitive values are wiped from the clipboard after a minute
@@ -575,8 +604,8 @@ pub fn run() {
             preview_import,
             apply_import,
             export_variables,
-            read_text_file,
-            write_text_file,
+            open_text_file,
+            save_text_file,
             copy_text,
             list_versions,
             restore_version,

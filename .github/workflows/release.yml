@@ -72,8 +72,10 @@ jobs:
   macos:
     needs: windows
     runs-on: macos-15
-    # Signing and notarization turn on once the Apple secrets exist; until then the app is
-    # ad-hoc signed. Secrets are passed only to the steps that need them.
+    # With APPLE_CERTIFICATE (+ password and APPLE_SIGNING_IDENTITY) the app is signed with that
+    # certificate: a self-signed one gives every release the same identity, so Keychain access
+    # survives updates; a Developer ID one plus APPLE_ID/APPLE_APP_PASSWORD/APPLE_TEAM_ID also
+    # notarizes. Without them it's ad-hoc signed. Secrets go only to the steps that need them.
     steps:
       - name: Check for signing secrets
         id: apple
@@ -108,26 +110,38 @@ jobs:
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$kc_pass" "$keychain"
           security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          security set-key-partition-list -S apple-tool:,apple: -k "$kc_pass" "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$kc_pass" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
 
+      # Built ad-hoc, then re-signed below: Xcode won't sign with an untrusted (self-signed)
+      # identity, while codesign does.
       - name: Build
         working-directory: macos
-        env:
-          SIGN: ${{ steps.apple.outputs.sign }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodegen generate
-          if [ "$SIGN" = yes ]; then
-            sign=(CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" ENABLE_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp)
-          else
-            sign=(CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=)
-          fi
           xcodebuild -project Yasecret.xcodeproj -scheme Yasecret -configuration Release \
-            -derivedDataPath build CODE_SIGN_STYLE=Manual "${sign[@]}" \
+            -derivedDataPath build CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
             ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="${GITHUB_REF_NAME#v}" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" build
+
+      - name: Sign
+        if: steps.apple.outputs.sign == 'yes'
+        working-directory: macos
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARIZE: ${{ steps.apple.outputs.notarize }}
+        run: |
+          app=build/Build/Products/Release/Yasecret.app
+          flags=(--force --options runtime --keychain "$RUNNER_TEMP/signing.keychain-db" -s "$APPLE_SIGNING_IDENTITY")
+          # Apple's timestamp service is needed for notarization (Developer ID only).
+          if [ "$NOTARIZE" = yes ]; then flags+=(--timestamp); fi
+          codesign "${flags[@]}" "$app"
+          codesign --verify --strict --verbose=2 "$app"
+          codesign -d -r- "$app"
+
+      - name: Package
+        working-directory: macos
+        run: |
           ditto -c -k --keepParent build/Build/Products/Release/Yasecret.app "$RUNNER_TEMP/Yasecret-macOS.zip"
 
       - name: Notarize

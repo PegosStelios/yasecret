@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import { AlertTriangle, Eye, EyeOff, FileUp } from "lucide-react";
 import {
   api, errorText, formatDate, plural, relativeTime,
@@ -223,8 +222,12 @@ export function ImportSheet({ projectId, env, onDone, onClose }: {
   const [error, setError] = useState<string | null>(null);
 
   const chooseFile = async () => {
-    const path = await open({ multiple: false, directory: false });
-    if (typeof path === "string") setContent(await api.readTextFile(path).catch((e) => { setError(errorText(e)); return ""; }));
+    try {
+      const picked = await api.openTextFile();
+      if (picked) setContent(picked[1]);
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   const preview = async () => {
@@ -380,11 +383,10 @@ export function ExportSheet({ project, env, secrets, onSaved, onClose }: {
   }, [format, withValues, selected, name, project, env]);
 
   const saveFile = async () => {
-    const path = await save({ defaultPath: meta.file });
-    if (!path) return;
     try {
-      await api.writeTextFile(path, preview);
-      onSaved(path.split(/[\\/]/).pop() ?? path);
+      const saved = await api.saveTextFile(meta.file, preview);
+      if (!saved) return;
+      onSaved(saved);
       onClose();
     } catch (e) {
       setError(errorText(e));

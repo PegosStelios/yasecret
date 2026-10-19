@@ -37,9 +37,9 @@ Tagged versions are published on the [Releases](../../releases) page: a Windows 
 
 **Windows.** The app checks for updates on launch and offers to install them. Updates are signed with Yasecret's update key and verified before they're applied. The installer itself isn't code-signed yet, so SmartScreen will warn on first install; choose *More info → Run anyway*.
 
-**macOS.** The app isn't signed with a Developer ID yet, so after unzipping, right-click *Yasecret.app → Open* the first time (or run `xattr -dr com.apple.quarantine Yasecret.app`). You can also build from source (below).
+**macOS.** Releases are signed with Yasecret's own (self-signed) certificate, so every version has the same identity and Keychain access carries over when you update. It isn't an Apple Developer ID, so the first time, right-click *Yasecret.app → Open* (or run `xattr -dr com.apple.quarantine Yasecret.app`). You can also build from source (below).
 
-**Cutting a release:** bump `version` in `desktop/src-tauri/tauri.conf.json`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The [Release](.github/workflows/release.yml) workflow builds both apps into a draft release; publishing the draft makes the update available. It needs the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets; adding `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, `APPLE_ID` and `APPLE_APP_PASSWORD` turns on Developer ID signing and notarization for the Mac app.
+**Cutting a release:** bump `version` in `desktop/src-tauri/tauri.conf.json`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The [Release](.github/workflows/release.yml) workflow builds both apps into a draft release; publishing the draft makes the update available. It needs the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets; the Mac app is signed with the certificate in `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY`. Replacing that with a Developer ID certificate and adding `APPLE_ID`, `APPLE_APP_PASSWORD` and `APPLE_TEAM_ID` also notarizes it (users will need to allow Keychain access once after that switch).
 
 ## How sharing works
 

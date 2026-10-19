@@ -222,6 +222,7 @@ fn removing_a_member_rotates_the_key_for_everyone_else() {
 
 #[test]
 fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
+    // Goes through iroh's public discovery and relay servers, so waits are generous.
     use yasecret_sync::relay::Relay;
 
     let mut owner = Device::new("owner");
@@ -245,26 +246,26 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
     assert!(relay_link.starts_with("yasecret://relay?"));
     let added = rt.block_on(relay.add(&relay_link)).unwrap();
     assert_eq!(added.name, "always-on");
-    eventually("owner sees the relay online", 40, || {
+    eventually("owner sees the relay online", 90, || {
         owner.svc().relays(&pid).unwrap().iter().any(|r| r.code == relay.code() && r.name == "office server" && r.online)
     });
 
     let have = |rt: &tokio::runtime::Runtime| rt.block_on(relay.projects()).unwrap().first().map(|p| p.entries).unwrap_or(0);
     // Let the relay settle on everything written so far, then count the invite on top of it.
     let mut settled = 0;
-    eventually("relay stores the project", 40, || {
+    eventually("relay stores the project", 90, || {
         let n = have(&rt);
         let stable = n > 0 && n == settled;
         settled = n;
         stable
     });
     let invite = owner.svc().create_invite(&pid, None, "editor").unwrap();
-    eventually("relay stores the invite before the owner leaves", 40, || have(&rt) > settled);
+    eventually("relay stores the invite before the owner leaves", 90, || have(&rt) > settled);
     owner.svc.take().unwrap().shutdown();
 
     let member = Device::new("member");
     assert_eq!(member.svc().join(&invite).unwrap(), pid, "join must succeed through the relay alone");
-    eventually("member reads the value via the relay", 40, || {
+    eventually("member reads the value via the relay", 90, || {
         member.value(&pid, &env_id, "SECRET").as_deref() == Some("from-owner")
     });
     assert_eq!(member.svc().status(&pid).unwrap().my_level, "pending", "only the owner can admit");
@@ -274,7 +275,7 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
 
     // The owner comes back, learns about the new member through the relay and admits them.
     owner.restart();
-    eventually("owner admits the member who joined via the relay", 60, || {
+    eventually("owner admits the member who joined via the relay", 90, || {
         member.svc().status(&pid).unwrap().my_level == "editor"
     });
     rt.block_on(relay.shutdown());
