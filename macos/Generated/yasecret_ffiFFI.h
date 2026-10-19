@@ -266,6 +266,11 @@ void uniffi_yasecret_ffi_fn_free_yasecretsession(void*_Nonnull ptr, RustCallStat
 void*_Nonnull uniffi_yasecret_ffi_fn_constructor_yasecretsession_new(RustBuffer db_path, RustBuffer password, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_ADD_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_ADD_RELAY
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_add_relay(void*_Nonnull ptr, RustBuffer project_id, RustBuffer code, RustBuffer name, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_APPLY_IMPORT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_APPLY_IMPORT
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_apply_import(void*_Nonnull ptr, RustBuffer project_id, RustBuffer env_id, RustBuffer items, int8_t overwrite, RustCallStatus *_Nonnull out_status
@@ -376,6 +381,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_list_members(void*_Nonn
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_list_projects(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_LIST_RELAYS
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_LIST_RELAYS
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_list_relays(void*_Nonnull ptr, RustBuffer project_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_LIST_SECRETS
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_LIST_SECRETS
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_list_secrets(void*_Nonnull ptr, RustBuffer env_id, RustCallStatus *_Nonnull out_status
@@ -399,6 +409,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_preview_import(void*_No
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_RECORD_REVEAL
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_RECORD_REVEAL
 void uniffi_yasecret_ffi_fn_method_yasecretsession_record_reveal(void*_Nonnull ptr, RustBuffer secret_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_REMOVE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_REMOVE_RELAY
+void uniffi_yasecret_ffi_fn_method_yasecretsession_remove_relay(void*_Nonnull ptr, RustBuffer project_id, RustBuffer code, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_RENAME_ENVIRONMENT
@@ -775,6 +790,12 @@ uint16_t uniffi_yasecret_ffi_checksum_func_looks_secret(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_ADD_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_ADD_RELAY
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_add_relay(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import(void
@@ -907,6 +928,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_list_projects(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_LIST_RELAYS
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_LIST_RELAYS
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_list_relays(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_LIST_SECRETS
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_LIST_SECRETS
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_list_secrets(void
@@ -934,6 +961,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_preview_import(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_RECORD_REVEAL
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_RECORD_REVEAL
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_record_reveal(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_REMOVE_RELAY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_REMOVE_RELAY
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_remove_relay(void
     
 );
 #endif

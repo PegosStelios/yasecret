@@ -166,6 +166,16 @@ pub struct FfiDiffRow {
 #[derive(Clone, uniffi::Record)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct FfiRelay {
+    pub code: String,
+    pub name: String,
+    pub added_at: i64,
+    pub online: bool,
+}
+
+#[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiMember {
     pub peer_id: String,
     pub name: String,
@@ -758,6 +768,24 @@ impl YasecretSession {
             .members(&project_id)?
             .into_iter()
             .map(|m| FfiMember { peer_id: m.peer_id, name: m.name, level: m.level, joined_at: m.joined_at, is_me: m.is_me })
+            .collect())
+    }
+
+    /// Owner only. Returns the link to run on the relay: `yasecret relay add '<link>'`.
+    pub fn add_relay(&self, project_id: String, code: String, name: String) -> Result<String, FfiError> {
+        Ok(self.require_sync()?.add_relay(&project_id, &code, &name)?)
+    }
+
+    pub fn remove_relay(&self, project_id: String, code: String) -> Result<(), FfiError> {
+        Ok(self.require_sync()?.remove_relay(&project_id, &code)?)
+    }
+
+    pub fn list_relays(&self, project_id: String) -> Result<Vec<FfiRelay>, FfiError> {
+        let Some(svc) = self.sync_service() else { return Ok(vec![]) };
+        Ok(svc
+            .relays(&project_id)?
+            .into_iter()
+            .map(|r| FfiRelay { code: r.code, name: r.name, added_at: r.added_at, online: r.online })
             .collect())
     }
 

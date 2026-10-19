@@ -7,7 +7,7 @@ use serde::Serialize;
 use tauri::{Emitter, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use yasecret_ffi::{
-    FfiActivity, FfiDiffRow, FfiEnvironment, FfiError, FfiImportItem, FfiImportRow, FfiImportSummary, FfiMember,
+    FfiActivity, FfiDiffRow, FfiEnvironment, FfiError, FfiImportItem, FfiImportRow, FfiImportSummary, FfiMember, FfiRelay,
     FfiProject, FfiSecret, FfiSyncStatus, FfiVersion, YasecretSession,
 };
 
@@ -414,6 +414,21 @@ async fn list_members(vault: State<'_, Vault>, project_id: String) -> CmdResult<
 }
 
 #[tauri::command]
+async fn add_relay(vault: State<'_, Vault>, project_id: String, code: String, name: String) -> CmdResult<String> {
+    blocking(&vault, move |s| s.add_relay(project_id, code, name)).await
+}
+
+#[tauri::command]
+async fn remove_relay(vault: State<'_, Vault>, project_id: String, code: String) -> CmdResult<()> {
+    blocking(&vault, move |s| s.remove_relay(project_id, code)).await
+}
+
+#[tauri::command]
+async fn list_relays(vault: State<'_, Vault>, project_id: String) -> CmdResult<Vec<FfiRelay>> {
+    blocking(&vault, move |s| s.list_relays(project_id)).await
+}
+
+#[tauri::command]
 async fn set_member_level(vault: State<'_, Vault>, project_id: String, peer_id: String, level: String) -> CmdResult<()> {
     blocking(&vault, move |s| s.set_member_level(project_id, peer_id, level)).await
 }
@@ -551,6 +566,9 @@ pub fn run() {
             join_project,
             list_members,
             set_member_level,
+            add_relay,
+            remove_relay,
+            list_relays,
             sync_status,
             expiring_variables,
             sync_revision,

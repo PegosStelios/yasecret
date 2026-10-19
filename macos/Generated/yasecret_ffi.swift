@@ -514,6 +514,11 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 public protocol YasecretSessionProtocol : AnyObject {
     
+    /**
+     * Owner only. Returns the link to run on the relay: `yasecret relay add '<link>'`.
+     */
+    func addRelay(projectId: String, code: String, name: String) throws  -> String
+    
     func applyImport(projectId: String, envId: String, items: [FfiImportItem], overwrite: Bool) throws  -> FfiImportSummary
     
     func cloneEnvironment(envId: String, newName: String) throws  -> FfiEnvironment
@@ -577,6 +582,8 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func listProjects() throws  -> [FfiProject]
     
+    func listRelays(projectId: String) throws  -> [FfiRelay]
+    
     func listSecrets(envId: String) throws  -> [FfiSecret]
     
     /**
@@ -592,6 +599,8 @@ public protocol YasecretSessionProtocol : AnyObject {
      * Call when the user explicitly reveals or copies a secret value.
      */
     func recordReveal(secretId: String) throws 
+    
+    func removeRelay(projectId: String, code: String) throws 
     
     func renameEnvironment(envId: String, newName: String) throws 
     
@@ -692,6 +701,19 @@ public convenience init(dbPath: String, password: String)throws  {
 
     
 
+    
+    /**
+     * Owner only. Returns the link to run on the relay: `yasecret relay add '<link>'`.
+     */
+open func addRelay(projectId: String, code: String, name: String)throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_add_relay(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(code),
+        FfiConverterString.lower(name),$0
+    )
+})
+}
     
 open func applyImport(projectId: String, envId: String, items: [FfiImportItem], overwrite: Bool)throws  -> FfiImportSummary {
     return try  FfiConverterTypeFfiImportSummary.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
@@ -909,6 +931,14 @@ open func listProjects()throws  -> [FfiProject] {
 })
 }
     
+open func listRelays(projectId: String)throws  -> [FfiRelay] {
+    return try  FfiConverterSequenceTypeFfiRelay.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_list_relays(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),$0
+    )
+})
+}
+    
 open func listSecrets(envId: String)throws  -> [FfiSecret] {
     return try  FfiConverterSequenceTypeFfiSecret.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_list_secrets(self.uniffiClonePointer(),
@@ -951,6 +981,14 @@ open func previewImport(envId: String, content: String)throws  -> [FfiImportRow]
 open func recordReveal(secretId: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_record_reveal(self.uniffiClonePointer(),
         FfiConverterString.lower(secretId),$0
+    )
+}
+}
+    
+open func removeRelay(projectId: String, code: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_remove_relay(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(code),$0
     )
 }
 }
@@ -1797,6 +1835,88 @@ public func FfiConverterTypeFfiProject_lower(_ value: FfiProject) -> RustBuffer 
 }
 
 
+public struct FfiRelay {
+    public var code: String
+    public var name: String
+    public var addedAt: Int64
+    public var online: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(code: String, name: String, addedAt: Int64, online: Bool) {
+        self.code = code
+        self.name = name
+        self.addedAt = addedAt
+        self.online = online
+    }
+}
+
+
+
+extension FfiRelay: Equatable, Hashable {
+    public static func ==(lhs: FfiRelay, rhs: FfiRelay) -> Bool {
+        if lhs.code != rhs.code {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.addedAt != rhs.addedAt {
+            return false
+        }
+        if lhs.online != rhs.online {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(code)
+        hasher.combine(name)
+        hasher.combine(addedAt)
+        hasher.combine(online)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiRelay: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRelay {
+        return
+            try FfiRelay(
+                code: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                addedAt: FfiConverterInt64.read(from: &buf), 
+                online: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiRelay, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterInt64.write(value.addedAt, into: &buf)
+        FfiConverterBool.write(value.online, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiRelay_lift(_ buf: RustBuffer) throws -> FfiRelay {
+    return try FfiConverterTypeFfiRelay.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiRelay_lower(_ value: FfiRelay) -> RustBuffer {
+    return FfiConverterTypeFfiRelay.lower(value)
+}
+
+
 public struct FfiSecret {
     public var id: String
     public var envId: String
@@ -2494,6 +2614,31 @@ fileprivate struct FfiConverterSequenceTypeFfiProject: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiRelay: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiRelay]
+
+    public static func write(_ value: [FfiRelay], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiRelay.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiRelay] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiRelay]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiRelay.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSecret: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSecret]
 
@@ -2585,6 +2730,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_func_looks_secret() != 50216) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_add_relay() != 60303) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import() != 36276) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2651,6 +2799,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_projects() != 21221) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_relays() != 23298) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_secrets() != 54880) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2664,6 +2815,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_record_reveal() != 40514) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_remove_relay() != 6862) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_rename_environment() != 57662) {

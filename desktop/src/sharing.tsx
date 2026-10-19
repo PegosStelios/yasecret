@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Check, Copy, Crown, Radio, User } from "lucide-react";
-import { api, errorText, levelLabel, relativeTime, Member, Project, SyncStatus } from "./api";
+import { Check, Copy, Crown, Radio, Server, User } from "lucide-react";
+import { api, errorText, levelLabel, relativeTime, Member, Project, Relay, SyncStatus } from "./api";
 import { Button, Confirm, ErrorLine, Modal, SHEET, Segmented, TextInput } from "./ui";
 
 export function sharingSummary(status: SyncStatus | null, members: Member[]): string | null {
@@ -35,6 +35,99 @@ function CopyBox({ text, copyValue, sensitive, onError }: { text: string; copyVa
       >
         {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
       </Button>
+    </div>
+  );
+}
+
+function RelaySection({ projectId, isOwner, onError }: { projectId: string; isOwner: boolean; onError: (e: string) => void }) {
+  const [relays, setRelays] = useState<Relay[]>([]);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [command, setCommand] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const cleaned = code.replace(/\s+/g, "").toLowerCase();
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.listRelays(projectId).then((r) => alive && setRelays(r)).catch(() => {});
+    load();
+    const t = window.setInterval(load, 3000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [projectId]);
+
+  const add = async () => {
+    setBusy(true);
+    try {
+      const link = await api.addRelay(projectId, cleaned, name);
+      setCommand(`yasecret relay add '${link}'`);
+      setCode("");
+      setRelays(await api.listRelays(projectId));
+    } catch (e) {
+      onError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canAdd = !busy && cleaned.length === 64;
+  // Enter here adds the relay instead of triggering the sheet's Create Invite.
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (canAdd) add();
+  };
+
+  if (!isOwner && relays.length === 0) return null;
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <h3 className="mb-1 font-semibold">Always-on peer</h3>
+      <p className="mb-2 text-muted">
+        Run <code className="font-mono text-xs">yasecret relay</code> on a computer that stays on, so teammates can join and sync while this one is off. It only stores encrypted values.
+      </p>
+      {relays.map((r) => (
+        <div key={r.code} className="flex items-center gap-3 py-1.5">
+          <Server size={16} className="text-muted" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate">{r.name}</div>
+            <div className="font-mono text-xs text-muted">{r.code.slice(0, 16)}…</div>
+          </div>
+          <span className={`flex items-center gap-1.5 text-xs ${r.online ? "text-accent" : "text-muted"}`}>
+            <span className={`size-2 rounded-full ${r.online ? "bg-accent" : "bg-line"}`} /> {r.online ? "Online" : "Offline"}
+          </span>
+          {isOwner && (
+            <Button
+              onClick={async () => {
+                try {
+                  await api.removeRelay(projectId, r.code);
+                  setRelays(await api.listRelays(projectId));
+                } catch (e) {
+                  onError(errorText(e));
+                }
+              }}
+            >
+              Remove
+            </Button>
+          )}
+        </div>
+      ))}
+      {isOwner && (
+        <div className="mt-2 flex items-center gap-2" onKeyDown={onKey}>
+          <div className="min-w-0 flex-1">
+            <TextInput mono placeholder="Relay code (yasecret relay code)" value={code} onChange={(e) => setCode(e.target.value)} />
+          </div>
+          <div className="w-36 shrink-0">
+            <TextInput placeholder="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <Button disabled={!canAdd} onClick={add}>{busy ? "Adding…" : "Add"}</Button>
+        </div>
+      )}
+      {command && (
+        <div className="mt-2 space-y-1.5">
+          <p className="text-xs text-muted">Run this on the relay machine:</p>
+          <CopyBox text={command} sensitive onError={onError} />
+        </div>
+      )}
     </div>
   );
 }
@@ -159,6 +252,7 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
           )}
         </div>
       )}
+      {(shared || isOwner) && <RelaySection projectId={project.id} isOwner={isOwner} onError={setError} />}
       <ErrorLine text={error} />
       {pendingRemoval && (
         <Confirm

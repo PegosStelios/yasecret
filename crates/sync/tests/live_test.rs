@@ -195,3 +195,51 @@ fn removing_a_member_rotates_the_key_for_everyone_else() {
     std::thread::sleep(Duration::from_secs(5));
     assert_ne!(leaves.value(&pid, &env_id, "TOKEN").as_deref(), Some("after"), "removed member must not read new values");
 }
+
+#[test]
+fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
+    use yasecret_sync::relay::Relay;
+
+    let mut owner = Device::new("owner");
+    let (pid, env_id) = {
+        let db = owner.db();
+        let p = project::create(&db, "always-on", None, "owner").unwrap();
+        project_key::create(&db, &p.id, &owner.db_key).unwrap();
+        let pk = project_key::load(&db, &p.id, &owner.db_key).unwrap();
+        let env = environment::create(&db, &p.id, "dev").unwrap();
+        secret::create(&db, &env.id, "SECRET", b"from-owner", &pk, "owner", None).unwrap();
+        (p.id, env.id)
+    };
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let relay_dir = tempfile::tempdir().unwrap();
+    let relay = rt.block_on(Relay::start(relay_dir.path())).unwrap();
+    assert_eq!(relay.code().len(), 64);
+
+    // Only the owner can add a relay; the link it returns is what the relay imports.
+    let relay_link = owner.svc().add_relay(&pid, &relay.code(), "office server").unwrap();
+    assert!(relay_link.starts_with("yasecret://relay?"));
+    let added = rt.block_on(relay.add(&relay_link)).unwrap();
+    assert_eq!(added.name, "always-on");
+    eventually("owner sees the relay online", 40, || {
+        owner.svc().relays(&pid).unwrap().iter().any(|r| r.code == relay.code() && r.name == "office server" && r.online)
+    });
+
+    let invite = owner.svc().create_invite(&pid, None, "editor").unwrap();
+    // Wait until the relay holds the invite (and everything else) before the owner leaves.
+    let have = |rt: &tokio::runtime::Runtime| rt.block_on(relay.projects()).unwrap().first().map(|p| p.entries).unwrap_or(0);
+    let owner_entries = 5; // project, env, secret, owner grant, invite (+ relay entry)
+    eventually("relay stores the project", 40, || have(&rt) > owner_entries);
+    owner.svc.take().unwrap().shutdown();
+
+    let member = Device::new("member");
+    assert_eq!(member.svc().join(&invite).unwrap(), pid, "join must succeed through the relay alone");
+    eventually("member reads the value via the relay", 40, || {
+        member.value(&pid, &env_id, "SECRET").as_deref() == Some("from-owner")
+    });
+    assert_eq!(member.svc().status(&pid).unwrap().my_level, "pending", "only the owner can admit");
+
+    // A relay can't be added by anyone but the owner.
+    assert!(matches!(member.svc().add_relay(&pid, &relay.code(), "x"), Err(SyncError::NotOwner)));
+    rt.block_on(relay.shutdown());
+}

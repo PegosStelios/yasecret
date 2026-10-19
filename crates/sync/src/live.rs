@@ -104,6 +104,48 @@ pub struct WGrant {
     pub signature: Vec<u8>,
 }
 
+/// An always-on peer the owner added; members dial it so the project stays reachable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WRelay {
+    pub code: String,
+    pub name: String,
+    pub added_at: i64,
+    pub removed: bool,
+    pub signature: Vec<u8>,
+}
+
+fn relay_msg(project_id: &str, code: &str, name: &str, added_at: i64, removed: bool) -> String {
+    format!("yasecret-relay-v1|{project_id}|{code}|{name}|{added_at}|{removed}")
+}
+
+/// Latest owner-signed relay record per relay, excluding removed ones.
+fn valid_relays(project_id: &str, entries: &[RawEntry], owner: &[u8; 32]) -> Vec<WRelay> {
+    let mut latest_by_code: HashMap<String, WRelay> = HashMap::new();
+    for e in entries.iter().filter(|e| e.key.starts_with("v2/relay/")) {
+        let Ok(r) = serde_json::from_slice::<WRelay>(&e.content) else { continue };
+        if e.key != keys::relay(&r.code) {
+            continue;
+        }
+        let msg = relay_msg(project_id, &r.code, &r.name, r.added_at, r.removed);
+        if crypto::verify(msg.as_bytes(), &r.signature, owner).is_err() {
+            continue;
+        }
+        match latest_by_code.get(&r.code) {
+            Some(prev) if (prev.added_at, prev.removed) >= (r.added_at, r.removed) => {}
+            _ => {
+                latest_by_code.insert(r.code.clone(), r);
+            }
+        }
+    }
+    let mut out: Vec<WRelay> = latest_by_code.into_values().filter(|r| !r.removed).collect();
+    out.sort_by(|a, b| a.added_at.cmp(&b.added_at));
+    out
+}
+
+fn relay_addr(code: &str) -> Option<iroh::EndpointAddr> {
+    code.parse::<iroh::PublicKey>().ok().map(iroh::EndpointAddr::new)
+}
+
 mod keys {
     pub const PREFIX: &str = "v2/";
     pub const PROJECT: &str = "v2/project";
@@ -113,6 +155,7 @@ mod keys {
     pub fn peer_key(peer: &str) -> String { format!("v2/peer_key/{peer}") }
     pub fn invite(id: &str) -> String { format!("v2/invite/{id}") }
     pub fn grant(peer: &str) -> String { format!("v2/grant/{peer}") }
+    pub fn relay(code: &str) -> String { format!("v2/relay/{code}") }
 }
 
 /// Binds a membership claim to the project key, so holding the doc ticket alone can't admit anyone.
@@ -230,6 +273,33 @@ impl InviteLink {
     }
 }
 
+/// What the owner hands to `yasecret relay add`: a read-only doc ticket, no project key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelayLink {
+    pub project_name: String,
+    pub ticket: String,
+}
+
+impl RelayLink {
+    pub fn to_url(&self) -> String {
+        format!("yasecret://relay?v=1&n={}&t={}", percent_encode(&self.project_name), self.ticket)
+    }
+
+    pub fn parse(link: &str) -> Result<Self> {
+        let bad = |why: &str| SyncError::InvalidLink(why.to_string());
+        let query = link
+            .trim()
+            .strip_prefix("yasecret://relay?")
+            .ok_or_else(|| bad("it doesn't start with yasecret://relay"))?;
+        let params: HashMap<&str, &str> = query.split('&').filter_map(|kv| kv.split_once('=')).collect();
+        let get = |k: &str| params.get(k).copied().ok_or_else(|| bad("it is incomplete — copy the whole link"));
+        if get("v")? != "1" {
+            return Err(bad("it was made by a different version of Yasecret"));
+        }
+        Ok(Self { project_name: percent_decode(get("n")?), ticket: get("t")?.to_string() })
+    }
+}
+
 fn percent_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
@@ -284,6 +354,14 @@ pub struct Member {
     pub is_me: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelayPeer {
+    pub code: String,
+    pub name: String,
+    pub added_at: i64,
+    pub online: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SyncStatus {
     pub shared: bool,
@@ -303,6 +381,14 @@ struct LiveState {
     is_owner: Option<bool>,
     my_level: Option<String>,
     members: Option<Vec<Member>>,
+    relays: Option<Vec<WRelay>>,
+    last_relay_dial: Option<std::time::Instant>,
+}
+
+/// Connected devices, not counting always-on peers.
+fn people_online(st: &LiveState) -> u32 {
+    let relays: HashSet<&str> = st.relays.iter().flatten().map(|r| r.code.as_str()).collect();
+    st.neighbors.iter().filter(|n| !relays.contains(n.as_str())).count() as u32
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -452,13 +538,16 @@ impl SyncService {
             }
             inner.reconcile(&project_id).await?;
             let doc = inner.open_doc(&info.doc_id).await?;
-            let ticket = doc
+            let mut ticket = doc
                 .share(
                     iroh_docs::api::protocol::ShareMode::Write,
                     iroh_docs::api::protocol::AddrInfoOptions::RelayAndAddresses,
                 )
                 .await
                 .map_err(anyhow::Error::from)?;
+            // Always-on peers let the joiner get in while this computer is off.
+            let entries = inner.read_entries(&doc).await?;
+            ticket.nodes.extend(valid_relays(&project_id, &entries, &info.owner_sign_pub).iter().filter_map(|r| relay_addr(&r.code)));
             let (name, project_key) = {
                 let db = inner.db()?;
                 let p = yasecret_core::project::get(&db, &project_id)?;
@@ -512,6 +601,85 @@ impl SyncService {
         let project_id = self.rt.block_on(async move { inner.join(invite).await })?;
         self.watch(&project_id);
         Ok(project_id)
+    }
+
+    /// Owner: registers an always-on peer and returns the link to run on it
+    /// (`yasecret relay add '<link>'`). The relay only gets read access to encrypted data.
+    pub fn add_relay(&self, project_id: &str, code: &str, name: &str) -> Result<String> {
+        let code: String = code.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase();
+        let addr = relay_addr(&code).filter(|_| code.len() == 64).ok_or(SyncError::InvalidRelayCode)?;
+        let name = match name.trim() {
+            "" => "Always-on peer".to_string(),
+            n => n.to_string(),
+        };
+        let inner = self.inner.clone();
+        let pid = project_id.to_string();
+        let url = self.rt.block_on(async move {
+            // A project that isn't shared yet is this device's own; ensure_doc shares it.
+            let info = inner.ensure_doc(&pid).await?;
+            if info.owner_sign_pub != sign_pub(&inner.identity) {
+                return Err(SyncError::NotOwner);
+            }
+            let doc = inner.open_doc(&info.doc_id).await?;
+            let r = inner.sign_relay(&pid, &code, &name, false);
+            inner.write(&doc, &keys::relay(&code), serde_json::to_vec(&r)?).await?;
+            inner.reconcile(&pid).await?;
+            let ticket = doc
+                .share(
+                    iroh_docs::api::protocol::ShareMode::Read,
+                    iroh_docs::api::protocol::AddrInfoOptions::RelayAndAddresses,
+                )
+                .await
+                .map_err(anyhow::Error::from)?;
+            let _ = doc.start_sync(vec![addr]).await;
+            let project_name = yasecret_core::project::get(&inner.db()?, &pid)?.name;
+            Ok::<_, SyncError>(RelayLink { project_name, ticket: ticket.to_string() }.to_url())
+        })?;
+        self.watch(project_id);
+        Ok(url)
+    }
+
+    /// Owner: members stop dialing this peer. It keeps the encrypted copy it already has.
+    pub fn remove_relay(&self, project_id: &str, code: &str) -> Result<()> {
+        let inner = self.inner.clone();
+        let (pid, code) = (project_id.to_string(), code.to_string());
+        self.rt.block_on(async move {
+            let info = inner.doc_info(&pid)?.ok_or_else(|| SyncError::NoDoc(pid.clone()))?;
+            if info.owner_sign_pub != sign_pub(&inner.identity) {
+                return Err(SyncError::NotOwner);
+            }
+            let doc = inner.open_doc(&info.doc_id).await?;
+            let name = valid_relays(&pid, &inner.read_entries(&doc).await?, &info.owner_sign_pub)
+                .into_iter()
+                .find(|r| r.code == code)
+                .map(|r| r.name)
+                .unwrap_or_default();
+            let r = inner.sign_relay(&pid, &code, &name, true);
+            inner.write(&doc, &keys::relay(&code), serde_json::to_vec(&r)?).await?;
+            inner.reconcile(&pid).await
+        })
+    }
+
+    pub fn relays(&self, project_id: &str) -> Result<Vec<RelayPeer>> {
+        let cached = self.inner.live.lock().unwrap().get(project_id).and_then(|s| s.relays.clone());
+        let list = match cached {
+            Some(list) => list,
+            None => {
+                let Some(info) = self.inner.doc_info(project_id)? else { return Ok(vec![]) };
+                let inner = self.inner.clone();
+                let pid = project_id.to_string();
+                self.rt.block_on(async move {
+                    let doc = inner.open_doc(&info.doc_id).await?;
+                    Ok::<_, SyncError>(valid_relays(&pid, &inner.read_entries(&doc).await?, &info.owner_sign_pub))
+                })?
+            }
+        };
+        let live = self.inner.live.lock().unwrap();
+        let neighbors = live.get(project_id).map(|s| s.neighbors.clone()).unwrap_or_default();
+        Ok(list
+            .into_iter()
+            .map(|r| RelayPeer { online: neighbors.contains(&r.code), code: r.code, name: r.name, added_at: r.added_at })
+            .collect())
     }
 
     pub fn members(&self, project_id: &str) -> Result<Vec<Member>> {
@@ -574,7 +742,7 @@ impl SyncService {
                     shared: true,
                     is_owner,
                     my_level: level.clone(),
-                    peers_online: st.neighbors.len() as u32,
+                    peers_online: people_online(st),
                     last_synced_at: st.last_synced_at,
                     last_error: st.last_error.clone(),
                 });
@@ -603,7 +771,7 @@ impl SyncService {
             shared: true,
             is_owner,
             my_level,
-            peers_online: st.map(|s| s.neighbors.len() as u32).unwrap_or(0),
+            peers_online: st.map(people_online).unwrap_or(0),
             last_synced_at: st.and_then(|s| s.last_synced_at),
             last_error: st.and_then(|s| s.last_error.clone()),
         })
@@ -737,6 +905,18 @@ impl Inner {
 
     fn sign_grant(&self, project_id: &str, peer: &str, author: &str, level: &str) -> WGrant {
         sign_grant(&self.identity, project_id, peer, author, level)
+    }
+
+    fn sign_relay(&self, project_id: &str, code: &str, name: &str, removed: bool) -> WRelay {
+        let added_at = now();
+        let msg = relay_msg(project_id, code, name, added_at, removed);
+        WRelay {
+            code: code.to_string(),
+            name: name.to_string(),
+            added_at,
+            removed,
+            signature: crypto::sign(msg.as_bytes(), &self.identity.signing_key()),
+        }
     }
 
     fn schedule(self: &Arc<Self>, project_id: String, delay: Duration) {
@@ -925,6 +1105,32 @@ impl Inner {
         st.is_owner = Some(is_owner);
         st.my_level = Some(level);
         st.members = Some(members);
+        st.relays = Some(valid_relays(project_id, entries, &info.owner_sign_pub));
+    }
+
+    /// Dials always-on peers that aren't connected, at most every `RECONCILE_EVERY`.
+    async fn dial_relays(&self, project_id: &str, doc: &iroh_docs::api::Doc) {
+        let addrs: Vec<iroh::EndpointAddr> = {
+            let mut live = self.live.lock().unwrap();
+            let st = live.entry(project_id.to_string()).or_default();
+            if st.last_relay_dial.is_some_and(|t| t.elapsed() < RECONCILE_EVERY) {
+                return;
+            }
+            let addrs: Vec<_> = st
+                .relays
+                .iter()
+                .flatten()
+                .filter(|r| !st.neighbors.contains(&r.code))
+                .filter_map(|r| relay_addr(&r.code))
+                .collect();
+            if !addrs.is_empty() {
+                st.last_relay_dial = Some(std::time::Instant::now());
+            }
+            addrs
+        };
+        if !addrs.is_empty() {
+            let _ = doc.start_sync(addrs).await;
+        }
     }
 
     /// One full sync pass: apply accepted remote changes, publish newer local ones,
@@ -935,6 +1141,7 @@ impl Inner {
         let doc = self.open_doc(&info.doc_id).await?;
         let entries = self.read_entries(&doc).await?;
         self.refresh_cache(project_id, &info, &entries);
+        self.dial_relays(project_id, &doc).await;
         let me = self.clone();
         let pid = project_id.to_string();
         let owner = info.owner_sign_pub;
@@ -1509,5 +1716,33 @@ mod tests {
     fn garbage_links_are_rejected_with_reason() {
         assert!(matches!(InviteLink::parse("https://example.com"), Err(SyncError::InvalidLink(_))));
         assert!(matches!(InviteLink::parse("yasecret://join?v=2&p=x"), Err(SyncError::InvalidLink(_))));
+    }
+
+    #[test]
+    fn relay_link_roundtrips() {
+        let link = RelayLink { project_name: "Shop / prod".into(), ticket: "docbbb".into() };
+        assert_eq!(RelayLink::parse(&link.to_url()).unwrap(), link);
+        assert!(matches!(RelayLink::parse("yasecret://join?v=2"), Err(SyncError::InvalidLink(_))));
+    }
+
+    #[test]
+    fn only_owner_signed_relays_are_dialed_and_removal_wins() {
+        let (_a, _, owner, _, _) = owner_db();
+        let (_b, _, intruder, _, _) = owner_db();
+        let owner_pub = sign_pub(&owner);
+        let entry = |signer: &Identity, code: &str, removed: bool, at: i64| {
+            let msg = relay_msg("p1", code, "box", at, removed);
+            let r = WRelay { code: code.into(), name: "box".into(), added_at: at, removed, signature: crypto::sign(msg.as_bytes(), &signer.signing_key()) };
+            RawEntry { key: keys::relay(code), author: "a".into(), timestamp: at as u64, content: serde_json::to_vec(&r).unwrap() }
+        };
+        let good = "aa".repeat(32);
+        let forged = "bb".repeat(32);
+        let entries = vec![entry(&owner, &good, false, 10), entry(&intruder, &forged, false, 10)];
+        let relays = valid_relays("p1", &entries, &owner_pub);
+        assert_eq!(relays.iter().map(|r| r.code.as_str()).collect::<Vec<_>>(), vec![good.as_str()]);
+        assert!(valid_relays("other-project", &entries, &owner_pub).is_empty(), "signature is bound to the project");
+
+        let removed = vec![entry(&owner, &good, false, 10), entry(&owner, &good, true, 11)];
+        assert!(valid_relays("p1", &removed, &owner_pub).is_empty());
     }
 }

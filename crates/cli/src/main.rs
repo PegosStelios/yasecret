@@ -26,6 +26,8 @@ enum Commands {
     Join(cmd::join::JoinArgs),
     Peers(cmd::peers::PeersArgs),
     Mcp(cmd::mcp::McpArgs),
+    /// Run an always-on peer that keeps shared projects reachable while their owner is offline
+    Relay(cmd::relay::RelayArgs),
 }
 
 #[tokio::main]
@@ -49,6 +51,7 @@ async fn main() {
         Commands::Join(args) => cmd::join::run(args).await,
         Commands::Peers(args) => cmd::peers::run(args),
         Commands::Mcp(args) => cmd::mcp::run(args).await,
+        Commands::Relay(args) => cmd::relay::run(args).await,
     };
     if let Err(e) = result {
         eprintln!("error: {e}");

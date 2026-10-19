@@ -17,6 +17,7 @@ export type DiffRow = {
   rightIsSecret: boolean;
 };
 export type Member = { peerId: string; name: string; level: string; joinedAt: number; isMe: boolean };
+export type Relay = { code: string; name: string; addedAt: number; online: boolean };
 export type SyncStatus = {
   shared: boolean;
   isOwner: boolean;
@@ -86,6 +87,9 @@ export const api = {
   joinProject: (link: string) => invoke<string>("join_project", { link }),
   listMembers: (projectId: string) => invoke<Member[]>("list_members", { projectId }),
   setMemberLevel: (projectId: string, peerId: string, level: string) => invoke<void>("set_member_level", { projectId, peerId, level }),
+  addRelay: (projectId: string, code: string, name: string) => invoke<string>("add_relay", { projectId, code, name }),
+  removeRelay: (projectId: string, code: string) => invoke<void>("remove_relay", { projectId, code }),
+  listRelays: (projectId: string) => invoke<Relay[]>("list_relays", { projectId }),
   syncStatus: (projectId: string) => invoke<SyncStatus>("sync_status", { projectId }),
   syncRevision: () => invoke<number>("sync_revision"),
   expiringVariables: (days: number) => invoke<{ id: string; label: string; expired: boolean }[]>("expiring_variables", { days }),

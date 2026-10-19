@@ -48,7 +48,20 @@ Each project you share becomes a replicated document synced over [iroh](https://
 - **Removing someone** rotates the project key and re-encrypts every value, so they can't read anything written afterwards. **Stop sharing** does the same for everyone.
 - Conflicts resolve last-write-wins per variable; deletions sync as tombstones; every overwritten value stays in history.
 
-Limitations: the owner's device must be online for someone to join, and only the owner can invite or change access. Activity logs are kept per device.
+### Always-on peer
+
+Devices only sync while they're online at the same time. To keep a project reachable when your laptop is closed, run a relay on any machine that stays on (a server, a NAS, a Raspberry Pi):
+
+```bash
+yasecret relay code          # prints this relay's code
+# In Yasecret: Share → Always-on peer → paste the code → Add, then run the command it gives you:
+yasecret relay add 'yasecret://relay?...'
+yasecret relay               # keep this running (systemd, launchd, tmux…)
+```
+
+The relay gets a read-only copy of the project document. It stores encrypted values and never receives the project key, but it can see what the document itself shows: project, environment and variable names, and member device names. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online.
+
+Limitations: without a relay, the owner's device must be online for someone to join. Only the owner can invite or change access. Activity logs are kept per device.
 
 ## CLI
 

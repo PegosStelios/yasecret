@@ -23,9 +23,14 @@ struct ShareSheet: View {
     @State private var copied = false
     @State private var confirmStop = false
     @State private var pendingRemoval: FfiMember?
+    @State private var relayCode = ""
+    @State private var relayName = ""
+    @State private var relayCommand: String?
+    @State private var relayCopied = false
 
     /// Return creates the invite while one can be made; otherwise it closes the sheet.
-    private var inviteIsDefault: Bool { sharing.isOwner && link == nil }
+    private var inviteIsDefault: Bool { sharing.isOwner && link == nil && relayCode.isEmpty }
+    private var cleanedRelayCode: String { relayCode.filter { !$0.isWhitespace }.lowercased() }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Layout.sheetSpacing) {
@@ -47,6 +52,11 @@ struct ShareSheet: View {
             if sharing.isShared {
                 Divider()
                 membersSection
+            }
+
+            if sharing.isOwner || !sharing.relays.isEmpty {
+                Divider()
+                relaySection
             }
 
             SheetError(text: error)
@@ -223,6 +233,96 @@ struct ShareSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    // MARK: Always-on peer
+
+    private var relaySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Always-on peer").font(.headline)
+            Text("Run `yasecret relay` on a computer that stays on, so teammates can join and sync while this Mac is off. It only stores encrypted values.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(sharing.relays, id: \.code) { r in
+                HStack {
+                    Image(systemName: "server.rack").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(r.name)
+                        Text(r.code.prefix(16) + "…")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Label(r.online ? "Online" : "Offline", systemImage: "circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(r.online ? .green : .secondary)
+                    if sharing.isOwner {
+                        Button("Remove") {
+                            run { session, pid in try session.removeRelay(projectId: pid, code: r.code) } done: {}
+                        }
+                    }
+                }
+            }
+            if sharing.isOwner {
+                HStack {
+                    TextField("Relay code (yasecret relay code)", text: $relayCode)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced))
+                    TextField("Name (optional)", text: $relayName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                    if relayCode.isEmpty {
+                        Button("Add", action: addRelay).disabled(true)
+                    } else {
+                        Button("Add", action: addRelay)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(working || cleanedRelayCode.count != 64)
+                    }
+                }
+            }
+            if let relayCommand {
+                Text("Run this on the relay machine:").font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .top) {
+                    Text(relayCommand)
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(3)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        Clipboard.copy(relayCommand, sensitive: true)
+                        relayCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { relayCopied = false }
+                    } label: {
+                        Label(relayCopied ? "Copied" : "Copy", systemImage: relayCopied ? "checkmark" : "doc.on.doc")
+                    }
+                }
+                .padding(10)
+                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func addRelay() {
+        working = true
+        error = nil
+        let (session, pid, code, name) = (session, projectId, cleanedRelayCode, relayName)
+        Task {
+            let result = await Task.detached { () -> Result<String, Error> in
+                Result { try session.addRelay(projectId: pid, code: code, name: name) }
+            }.value
+            working = false
+            switch result {
+            case .success(let link):
+                relayCommand = "yasecret relay add '\(link)'"
+                relayCode = ""
+                relayName = ""
+                await sharing.refresh(projectId: pid, session: session)
+            case .failure(let failure):
+                error = userMessage(failure)
             }
         }
     }

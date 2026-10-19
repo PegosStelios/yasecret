@@ -1,5 +1,6 @@
 pub mod live;
 pub mod node;
+pub mod relay;
 
 use thiserror::Error;
 
@@ -27,6 +28,8 @@ pub enum SyncError {
     InvalidDeviceCode,
     #[error("Sync is already running for this vault in another process (another Yasecret window or `yasecret share`). Close it and try again")]
     InUse,
+    #[error("That relay code isn't valid — it should be 64 characters (letters a–f and digits). Run `yasecret relay code` on the relay machine")]
+    InvalidRelayCode,
     #[error("Only the project owner can do that")]
     NotOwner,
     #[error("You already have this project")]

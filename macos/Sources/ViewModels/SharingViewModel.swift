@@ -5,6 +5,7 @@ import Foundation
 final class SharingViewModel {
     var status: FfiSyncStatus?
     var members: [FfiMember] = []
+    var relays: [FfiRelay] = []
 
     var isShared: Bool { status?.shared == true }
     var isOwner: Bool { !isShared || status?.isOwner == true }
@@ -18,18 +19,20 @@ final class SharingViewModel {
     func refresh(projectId: String, session: YasecretSession) async {
         let id = UUID()
         requestId = id
-        let (st, list, err) = await Task.detached { () -> (FfiSyncStatus?, [FfiMember], String?) in
+        let (st, list, relayList, err) = await Task.detached { () -> (FfiSyncStatus?, [FfiMember], [FfiRelay], String?) in
             do {
                 let st = try session.syncStatus(projectId: projectId)
                 let list = st.shared ? try session.listMembers(projectId: projectId) : []
-                return (st, list, nil)
+                let relayList = st.shared ? try session.listRelays(projectId: projectId) : []
+                return (st, list, relayList, nil)
             } catch {
-                return (nil, [], userMessage(error))
+                return (nil, [], [], userMessage(error))
             }
         }.value
         guard requestId == id else { return }
         status = st
         members = list
+        relays = relayList
         error = err
     }
 
@@ -37,6 +40,7 @@ final class SharingViewModel {
         requestId = UUID()
         status = nil
         members = []
+        relays = []
         error = nil
     }
 

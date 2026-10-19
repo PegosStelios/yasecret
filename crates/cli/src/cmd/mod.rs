@@ -5,6 +5,7 @@ pub mod mcp;
 pub mod peers;
 pub mod pull;
 pub mod push;
+pub mod relay;
 pub mod run;
 pub mod share;
 pub mod target;
