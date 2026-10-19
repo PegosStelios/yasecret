@@ -93,14 +93,19 @@ async fn serve(dir: &Path) -> yasecret_core::Result<()> {
             _ = redial.tick() => { let _ = r.resume().await; }
             _ = tick.tick() => {
                 take_inbox(&r, dir).await;
-                let projects = r.projects().await.map_err(sync_err)?;
-                let summary = if projects.is_empty() {
-                    "No projects yet. In Yasecret: Share → Always-on peer, paste the relay code, then run `yasecret relay add '<link>'`.".to_string()
-                } else {
-                    projects.iter().map(|p| format!("{} ({} entries)", p.name, p.entries)).collect::<Vec<_>>().join(", ")
+                // A relay is meant to stay up: report a failed status read and try again next tick.
+                let summary = match r.projects().await {
+                    Err(e) => format!("Couldn't read project status: {e}"),
+                    Ok(projects) if projects.is_empty() => {
+                        "Keeping: no projects yet. In Yasecret: Share → Always-on peer, paste the relay code, then run `yasecret relay add '<link>'`.".to_string()
+                    }
+                    Ok(projects) => format!(
+                        "Keeping: {}",
+                        projects.iter().map(|p| format!("{} ({} entries)", p.name, p.entries)).collect::<Vec<_>>().join(", ")
+                    ),
                 };
                 if summary != last {
-                    eprintln!("Keeping: {summary}");
+                    eprintln!("{summary}");
                     last = summary;
                 }
             }
