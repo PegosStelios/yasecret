@@ -1,0 +1,21 @@
+name: Relay image
+
+# Builds (doesn't publish) the always-on peer image and checks it starts.
+on:
+  push:
+    branches: [main]
+    paths: ["crates/**", "deploy/relay/**", "Cargo.lock", ".github/workflows/relay-image.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/relay/Dockerfile -t yasecret-relay .
+      - name: Relay code works in the image
+        run: |
+          code=$(docker run --rm yasecret-relay code)
+          echo "$code"
+          [ ${#code} -eq 64 ]

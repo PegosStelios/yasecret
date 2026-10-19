@@ -21,6 +21,14 @@ enum Commands {
     Diff(cmd::diff::DiffArgs),
     /// Keep a local .env up to date as the environment changes
     Dev(cmd::dev::DevArgs),
+    /// Print shell statements that set an environment's variables: eval "$(yasecret env -p app -e dev)"
+    Env(cmd::shellenv::EnvArgs),
+    /// Write a .env.example listing an environment's keys (no values)
+    Example(cmd::example::ExampleArgs),
+    /// Check that every key in a .env.example is set; exit 0 ok, 1 missing, 2 error
+    Check(cmd::check::CheckArgs),
+    /// Look for vault secrets in files or git history (names only); exit 0 clean, 1 found, 2 error
+    Scan(cmd::scan::ScanArgs),
     /// Run a command with selected variables injected (values masked in its output)
     Run(cmd::run::RunArgs),
     /// Create an invite link for a project and stay online until it's used
@@ -35,22 +43,30 @@ enum Commands {
     Relay(cmd::relay::RelayArgs),
 }
 
+/// Exit codes for commands meant for CI, like diff(1): 0 fine, 1 found a problem, 2 couldn't check.
+fn exit_with(result: yasecret_core::Result<bool>) -> yasecret_core::Result<()> {
+    match result {
+        Ok(false) => Ok(()),
+        Ok(true) => std::process::exit(1),
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(2);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
     let result: yasecret_core::Result<()> = match cli.command {
         Commands::Pull(args) => cmd::pull::run(args),
         Commands::Push(args) => cmd::push::run(args),
-        // Exit codes follow diff(1): 0 same, 1 different, 2 the comparison failed.
-        Commands::Diff(args) => match cmd::diff::run(args) {
-            Ok(false) => Ok(()),
-            Ok(true) => std::process::exit(1),
-            Err(e) => {
-                eprintln!("error: {e}");
-                std::process::exit(2);
-            }
-        },
+        Commands::Diff(args) => exit_with(cmd::diff::run(args)),
         Commands::Dev(args) => cmd::dev::run(args),
+        Commands::Env(args) => cmd::shellenv::run(args),
+        Commands::Example(args) => cmd::example::run(args),
+        Commands::Check(args) => exit_with(cmd::check::run(args)),
+        Commands::Scan(args) => exit_with(cmd::scan::run(args)),
         Commands::Run(args) => cmd::run::run(args),
         Commands::Share(args) => cmd::share::run(args).await,
         Commands::Join(args) => cmd::join::run(args).await,

@@ -60,7 +60,16 @@ Devices only sync while they're online at the same time. To keep a project reach
 yasecret relay code          # prints this relay's code
 # In Yasecret: Share → Always-on peer → paste the code → Add, then run the command it gives you:
 yasecret relay add 'yasecret://relay?...'
-yasecret relay               # keep this running (systemd, launchd, tmux…)
+yasecret relay               # keep this running
+```
+
+Owners on a headless machine can use `yasecret share -p my-app --relay <code>` instead of the app. To run the relay as a service, use [`deploy/relay/yasecret-relay.service`](deploy/relay/yasecret-relay.service) (systemd) or the [Dockerfile](deploy/relay/Dockerfile):
+
+```bash
+docker build -f deploy/relay/Dockerfile -t yasecret-relay .
+docker run -d --name yasecret-relay --restart unless-stopped -v yasecret-relay:/data yasecret-relay
+docker run --rm -v yasecret-relay:/data yasecret-relay code
+docker run --rm -v yasecret-relay:/data yasecret-relay add 'yasecret://relay?...'
 ```
 
 The relay gets a read-only copy of the project document. It stores encrypted values and never receives the project key, but it can see what the document itself shows: project, environment and variable names, and member device names. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online (up to a week after the invite expires). Removing a relay stops members from dialing it, but it keeps what it already stored and devices that remember it may keep syncing with it; to cut a relay off completely, stop sharing and share the project again.
@@ -77,10 +86,23 @@ yasecret push --project my-app --env development -i .env   # adds new keys; --ov
 yasecret diff --project my-app --env development -i .env   # key names only; exit 0 same, 1 different, 2 error (CI-friendly)
 yasecret dev  --project my-app --env development -o .env   # rewrites .env whenever the environment changes
 yasecret run  --project my-app --env development --only DATABASE_URL -- npm run migrate
+eval "$(yasecret env -p my-app -e development)"            # load into the current shell (--shell fish|powershell)
+yasecret example -p my-app -e development -o .env.example  # keys only, secrets marked
+yasecret check -p my-app -e production                     # every key in .env.example set? (or --file .env)
+yasecret scan                                              # vault secrets in this repo? (--staged, --history)
 yasecret peers self                    # this device's code, for device-bound invites
 yasecret share --project my-app        # prints an invite link and stays online until you stop it
 yasecret join 'yasecret://join?...'
 ```
+
+For [direnv](https://direnv.net), put `eval "$(yasecret env -p my-app -e development)"` in `.envrc`. To stop secrets from being committed, add a pre-commit hook (`.git/hooks/pre-commit`):
+
+```bash
+#!/bin/sh
+exec yasecret scan --staged
+```
+
+`scan` only reports the file, line and key name, never the value. `check`, `diff` and `scan` exit 0 when everything is fine, 1 when they find a problem and 2 when they couldn't check, so they fit in CI.
 
 `push` stores names that look sensitive (`*_KEY`, `*PASSWORD*`, `*TOKEN*`…) as secrets and the rest as plain variables. `dev` also picks up changes the desktop app syncs in from teammates. `run` injects only the variables you name with `--only`, and masks their values in the command's output. The CLI prompts for your master password. While the desktop app is running it owns the sync node, so share and join from the app instead.
 

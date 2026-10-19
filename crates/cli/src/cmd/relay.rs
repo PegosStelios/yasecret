@@ -90,6 +90,7 @@ async fn serve(dir: &Path) -> yasecret_core::Result<()> {
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
+            _ = terminated() => break,
             _ = redial.tick() => { let _ = r.resume().await; }
             _ = tick.tick() => {
                 take_inbox(&r, dir).await;
@@ -113,4 +114,20 @@ async fn serve(dir: &Path) -> yasecret_core::Result<()> {
     }
     r.shutdown().await;
     Ok(())
+}
+
+/// SIGTERM, as sent by `docker stop` and `systemctl stop`, so the stores close cleanly.
+#[cfg(unix)]
+async fn terminated() {
+    match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+        Ok(mut s) => {
+            s.recv().await;
+        }
+        Err(_) => std::future::pending().await,
+    }
+}
+
+#[cfg(not(unix))]
+async fn terminated() {
+    std::future::pending().await
 }

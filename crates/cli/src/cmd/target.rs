@@ -1,6 +1,6 @@
 //! Resolves `--project` / `--env` names to an unlocked vault plus the project key.
 
-use yasecret_core::{crypto, environment, models::Environment, models::Project, project, project_key, secret, YasecretError};
+use yasecret_core::{crypto, env_file, environment, models::Environment, models::Project, project, project_key, secret, YasecretError};
 use zeroize::Zeroizing;
 
 pub struct Target {
@@ -29,13 +29,18 @@ impl Target {
     /// Current variables as (key, value), sorted by key. Reloads the project key, which
     /// changes when the project's key is rotated (a member removed, sharing stopped).
     pub fn pairs(&mut self) -> yasecret_core::Result<Vec<(String, String)>> {
+        Ok(self.items()?.into_iter().map(|i| (i.key, i.value)).collect())
+    }
+
+    /// Like `pairs`, keeping whether each variable is marked secret.
+    pub fn items(&mut self) -> yasecret_core::Result<Vec<env_file::ExportItem>> {
         self.key = project_key::load(&self.session.db, &self.project.id, &self.session.db_key)?;
         secret::list(&self.session.db, &self.env.id)?
             .into_iter()
             .map(|s| {
                 let nonce: [u8; 12] = s.nonce.clone().try_into().map_err(|_| YasecretError::Crypto)?;
                 let v = crypto::decrypt(&s.encrypted_value, &nonce, &self.key)?;
-                Ok((s.key, String::from_utf8_lossy(&v).into_owned()))
+                Ok(env_file::ExportItem { key: s.key, value: String::from_utf8_lossy(&v).into_owned(), is_secret: s.is_secret })
             })
             .collect()
     }

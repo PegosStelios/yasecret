@@ -15,6 +15,12 @@ pub struct ShareArgs {
     /// Print the link and exit instead of staying online for the invitee
     #[arg(long)]
     pub no_wait: bool,
+    /// Add an always-on peer instead of creating an invite: the code from `yasecret relay code`
+    #[arg(long, conflicts_with_all = ["device_code", "viewer"])]
+    pub relay: Option<String>,
+    /// Name shown for the relay
+    #[arg(long, requires = "relay")]
+    pub name: Option<String>,
     #[arg(long, hide = true)]
     pub db: Option<String>,
     #[arg(long, hide = true)]
@@ -36,6 +42,12 @@ fn run_blocking(args: ShareArgs) -> yasecret_core::Result<()> {
         .ok_or_else(|| YasecretError::NotFound(format!("project '{}'", args.project)))?;
 
     let svc = start(&path, &session)?;
+    if let Some(code) = &args.relay {
+        let link = svc.add_relay(&proj.id, code, args.name.as_deref().unwrap_or("")).map_err(sync_err);
+        svc.shutdown();
+        println!("Run this on the relay machine:\n  yasecret relay add '{}'", link?);
+        return Ok(());
+    }
     let level = if args.viewer { LEVEL_VIEWER } else { LEVEL_EDITOR };
     let link = svc
         .create_invite(&proj.id, args.device_code.as_deref(), level)
