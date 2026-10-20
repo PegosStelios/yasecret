@@ -129,12 +129,6 @@ exec yasecret scan --staged
 
 `push` stores names that look sensitive (`*_KEY`, `*PASSWORD*`, `*TOKEN*`…) as secrets and the rest as plain variables. `dev` also picks up changes the desktop app syncs in from teammates. `run` injects only the variables you name with `--only`, and masks their values in the command's output. The CLI prompts for your master password. While the desktop app is running it owns the sync node, so share and join from the app instead.
 
-## iPhone and iPad
-
-A read-only companion app ([`ios/`](ios/)) for looking things up away from your desk: unlock with your password or Face ID, browse projects, environments and variables (inherited ones included), reveal and copy values. Secrets copied on the phone expire from the clipboard after a minute. It joins projects like any other device: send the owner the phone's device code for a device-bound invite (ideally *Can view*), or paste an invite link. It syncs while open and locks when you leave it.
-
-Build it with XcodeGen and Xcode (`cd ios && xcodegen generate`, then open `YasecretMobile.xcodeproj`); it needs the `aarch64-apple-ios` and `aarch64-apple-ios-sim` Rust targets. It isn't on the App Store.
-
 ## VS Code
 
 The [extension](vscode/) shows your projects, environments and variable names in a sidebar, copies values, inserts references in the file's language (`process.env.API_KEY`, `os.environ["API_KEY"]`…), writes `.env` files and explains references on hover. It uses the `yasecret` CLI, passing the master password over standard input and keeping it in memory only until it locks again. Releases include the `.vsix`; install it with *Extensions → … → Install from VSIX*.
