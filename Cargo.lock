@@ -8936,6 +8936,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "x25519-dalek",
  "yasecret-core",
  "zeroize",
 ]
