@@ -1,0 +1,86 @@
+{
+  "name": "yasecret",
+  "displayName": "Yasecret",
+  "description": "Browse and use your Yasecret variables in VS Code: copy values, insert references, write .env files.",
+  "version": "0.1.0",
+  "publisher": "yasecret",
+  "license": "AGPL-3.0-or-later",
+  "repository": { "type": "git", "url": "https://github.com/PegosStelios/yasecret" },
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "yasecret", "title": "Yasecret", "icon": "media/icon.svg" }]
+    },
+    "views": {
+      "yasecret": [{ "id": "yasecret.variables", "name": "Variables" }]
+    },
+    "viewsWelcome": [
+      {
+        "view": "yasecret.variables",
+        "contents": "Your vault is locked.\n[Unlock Vault](command:yasecret.unlock)\nNeeds the `yasecret` CLI (see the Yasecret README)."
+      }
+    ],
+    "commands": [
+      { "command": "yasecret.unlock", "title": "Unlock Vault", "category": "Yasecret", "icon": "$(unlock)" },
+      { "command": "yasecret.lock", "title": "Lock Vault", "category": "Yasecret", "icon": "$(lock)" },
+      { "command": "yasecret.refresh", "title": "Refresh", "category": "Yasecret", "icon": "$(refresh)" },
+      { "command": "yasecret.useEnvironment", "title": "Use This Environment for Hovers", "category": "Yasecret" },
+      { "command": "yasecret.copyValue", "title": "Copy Value", "category": "Yasecret", "icon": "$(copy)" },
+      { "command": "yasecret.copyKey", "title": "Copy Name", "category": "Yasecret" },
+      { "command": "yasecret.insertReference", "title": "Insert Reference", "category": "Yasecret", "icon": "$(insert)" },
+      { "command": "yasecret.pullEnv", "title": "Write .env…", "category": "Yasecret", "icon": "$(cloud-download)" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "yasecret.refresh", "when": "view == yasecret.variables && yasecret.unlocked", "group": "navigation" },
+        { "command": "yasecret.lock", "when": "view == yasecret.variables && yasecret.unlocked", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "yasecret.copyValue", "when": "viewItem =~ /^variable/", "group": "inline" },
+        { "command": "yasecret.insertReference", "when": "viewItem =~ /^variable/", "group": "inline" },
+        { "command": "yasecret.copyValue", "when": "viewItem =~ /^variable/", "group": "1_copy@1" },
+        { "command": "yasecret.copyKey", "when": "viewItem =~ /^variable/", "group": "1_copy@2" },
+        { "command": "yasecret.insertReference", "when": "viewItem =~ /^variable/", "group": "2_insert" },
+        { "command": "yasecret.pullEnv", "when": "viewItem == environment", "group": "inline" },
+        { "command": "yasecret.pullEnv", "when": "viewItem == environment", "group": "1_env@1" },
+        { "command": "yasecret.useEnvironment", "when": "viewItem == environment", "group": "1_env@2" }
+      ],
+      "commandPalette": [
+        { "command": "yasecret.copyValue", "when": "false" },
+        { "command": "yasecret.copyKey", "when": "false" },
+        { "command": "yasecret.insertReference", "when": "false" },
+        { "command": "yasecret.useEnvironment", "when": "false" }
+      ]
+    },
+    "configuration": {
+      "title": "Yasecret",
+      "properties": {
+        "yasecret.cliPath": {
+          "type": "string",
+          "default": "yasecret",
+          "description": "Path to the yasecret CLI."
+        },
+        "yasecret.lockAfterMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "description": "Forget the master password after this many minutes without using the vault."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test out/test/lib.test.js",
+    "package": "tsc -p . && vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.6.0"
+  }
+}

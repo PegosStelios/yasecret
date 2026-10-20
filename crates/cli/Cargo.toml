@@ -19,6 +19,7 @@ tempfile      = { workspace = true }
 yasecret-core = { path = "../core" }
 
 [dependencies]
+serde_json    = { workspace = true }
 yasecret-core = { path = "../core" }
 yasecret-sync = { path = "../sync" }
 clap          = { workspace = true }

@@ -9,10 +9,15 @@ mod unlock;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    /// Read the master password from the first line of standard input instead of prompting
+    #[arg(long, global = true)]
+    password_stdin: bool,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    /// List projects, environments and variable names (no values)
+    Ls(cmd::ls::LsArgs),
     /// Write an environment to a .env file (or stdout)
     Pull(cmd::pull::PullArgs),
     /// Send a local .env or JSON file into an environment
@@ -62,7 +67,14 @@ fn exit_with(result: yasecret_core::Result<bool>) -> yasecret_core::Result<()> {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    if cli.password_stdin {
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_ok() {
+            unlock::set_stdin_password(line.trim_end_matches(['\r', '\n']).to_string());
+        }
+    }
     let result: yasecret_core::Result<()> = match cli.command {
+        Commands::Ls(args) => cmd::ls::run(args),
         Commands::Pull(args) => cmd::pull::run(args),
         Commands::Push(args) => cmd::push::run(args),
         Commands::Diff(args) => exit_with(cmd::diff::run(args)),

@@ -4,6 +4,7 @@ pub mod diff;
 pub mod example;
 pub mod inherit;
 pub mod join;
+pub mod ls;
 pub mod mcp;
 pub mod peers;
 pub mod pull;
