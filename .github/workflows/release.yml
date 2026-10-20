@@ -69,6 +69,52 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: true
 
+  linux:
+    needs: windows
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev libssl-dev pkg-config
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: desktop/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Rust tests
+        run: cargo test -p yasecret-core -p yasecret-ffi
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: pnpm install --frozen-lockfile
+
+      # Adds the AppImage, .deb and the Linux entry of latest.json to the draft release.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: desktop
+          args: --config src-tauri/tauri.release.conf.json --bundles appimage,deb
+          tagName: ${{ github.ref_name }}
+          releaseName: Yasecret ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+
   macos:
     needs: windows
     runs-on: macos-15

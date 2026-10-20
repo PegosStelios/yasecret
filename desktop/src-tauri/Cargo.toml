@@ -33,5 +33,9 @@ tauri-plugin-process = "2"
 windows        = { version = "0.62", features = ["Security_Credentials_UI", "Win32_System_WinRT", "Win32_Foundation", "Foundation"] }
 windows-future = "0.3"
 
+# Linux: remembered passwords go to the desktop keyring (Secret Service over D-Bus).
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
