@@ -7,6 +7,7 @@ import { api, errorText, plural, relativeTime, Environment, Project, Secret, Syn
 import { Button, ColumnFooter, ColumnHeader, Confirm, ContextMenu, EmptyState, FooterButton, IconButton, MenuItem } from "./ui";
 import { ActivitySheet, CompareSheet, ExportSheet, HistorySheet, ImportSheet, NameSheet, NewProjectSheet, VariableEditor } from "./sheets";
 import { JoinSheet, ShareSheet, sharingSummary } from "./sharing";
+import { VaultSheet } from "./vault";
 
 type Sheet =
   | { kind: "newProject" }
@@ -22,6 +23,7 @@ type Sheet =
   | { kind: "compare"; left: Environment; right: Environment }
   | { kind: "share" }
   | { kind: "join"; link: string }
+  | { kind: "vault" }
   | { kind: "confirm"; title: string; message: string; action: string; onConfirm: () => void };
 
 type Menu = { at: { x: number; y: number }; items: MenuItem[] };
@@ -339,6 +341,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
           <FooterButton title="New project" onClick={() => setSheet({ kind: "newProject" })}><Plus size={15} /> New</FooterButton>
           <FooterButton title="Join a project someone shared with you" onClick={() => setSheet({ kind: "join", link: "" })}><UserPlus size={15} /> Join</FooterButton>
           <span className="flex-1" />
+          <IconButton title="Vault: password, recovery key, backup" onClick={() => setSheet({ kind: "vault" })}><KeyRound size={15} /></IconButton>
           <IconButton title={`Lock vault (${modKey}Shift+L)`} onClick={onLock}><Lock size={15} /></IconButton>
         </ColumnFooter>
       </aside>
@@ -640,6 +643,8 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
             onStopped={() => reloadAll()}
           />
         );
+      case "vault":
+        return <VaultSheet onClose={close} onLockedOut={onLock} />;
       case "join":
         return <JoinSheet initialLink={sheet.link} onClose={close} onJoined={async (pid) => { await run(loadProjects()); setProjectId(pid); }} />;
     }

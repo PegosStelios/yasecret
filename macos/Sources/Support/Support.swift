@@ -56,6 +56,17 @@ extension View {
     }
 }
 
+/// Where the vault lives. Debug builds can point at a throwaway vault (with its own Keychain slot).
+enum VaultLocation {
+    #if DEBUG
+    static let override = ProcessInfo.processInfo.environment["YASECRET_DB_PATH"]
+    #else
+    static let override: String? = nil
+    #endif
+    static let dbPath: String = override ?? defaultDbPath()
+    static let keychainAccount: String = override.map { "dev-\($0)" } ?? "default"
+}
+
 enum Layout {
     static let gutter: CGFloat = 16
     /// Every sheet uses one of these widths and the same inner spacing.

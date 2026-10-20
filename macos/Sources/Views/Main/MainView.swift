@@ -44,6 +44,12 @@ struct MainView: View {
                 }
             }
         }
+        .sheet(item: Bindable(appState).vaultSheet) { which in
+            switch which {
+            case .changePassword: ChangePasswordSheet()
+            case .recoveryKey: if let session = appState.session { RecoveryKeySheet(session: session) }
+            }
+        }
         .task(id: projectsVM.selectedProjectId) {
             while !Task.isCancelled {
                 if let pid = projectsVM.selectedProjectId, let session = appState.session {

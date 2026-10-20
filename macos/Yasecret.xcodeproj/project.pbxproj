@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		091842D5658EBDC87F5E3F1C /* UnlockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFAF40D749444730951A336E /* UnlockViewModelTests.swift */; };
+		0B5AC98FBF4E47B6E885CC96 /* VaultSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B8F4CB9FCD8F37A803976F /* VaultSheets.swift */; };
 		0E0D3AB2098DB7705FA63F5D /* SecretsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 657EA9BC8AD282350B6E59CC /* SecretsViewModelTests.swift */; };
 		18B6609216572487C36646C9 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E42014ECF5C8D0D8BC38F12A /* MainView.swift */; };
 		22FC8403E2BAE4CF011134B4 /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A87752CB6A8A7C7A4350AE88 /* UnlockView.swift */; };
@@ -59,6 +60,7 @@
 		1FBBEF6D6DCE51AEAFFC233A /* SecretEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretEditorView.swift; sourceTree = "<group>"; };
 		309EFCDBF091ACC9147EE59B /* LoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingView.swift; sourceTree = "<group>"; };
 		3D09354C76A0B2604EAAC772 /* ProjectsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsViewModel.swift; sourceTree = "<group>"; };
+		40B8F4CB9FCD8F37A803976F /* VaultSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSheets.swift; sourceTree = "<group>"; };
 		44C0E6DE7B76E820EB6DBFFF /* SecretsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsViewModel.swift; sourceTree = "<group>"; };
 		45960E3AAFF9407520DE2528 /* SecretListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretListView.swift; sourceTree = "<group>"; };
 		4E9043E58BC3AA04986C0A83 /* UnlockViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockViewModel.swift; sourceTree = "<group>"; };
@@ -97,6 +99,14 @@
 				9A785E2BB750C4A8D01207E7 /* YasecretTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		0CB8711EBB4A87292FD07A4E /* Vault */ = {
+			isa = PBXGroup;
+			children = (
+				40B8F4CB9FCD8F37A803976F /* VaultSheets.swift */,
+			);
+			path = Vault;
 			sourceTree = "<group>";
 		};
 		21562568D7E10C2D3D3E0221 /* Tests */ = {
@@ -231,6 +241,7 @@
 				4979B63FEA26AE68347D3EB9 /* Placeholder */,
 				6435C31673B731D18C53D7FE /* Sharing */,
 				2E60247FCFF490E433092647 /* Unlock */,
+				0CB8711EBB4A87292FD07A4E /* Vault */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -325,6 +336,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		E9B1A8E124A74B8FAF897AC3 /* Build Rust FFI */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -374,6 +386,7 @@
 				D3249A32BA897EC6C96638CA /* Support.swift in Sources */,
 				22FC8403E2BAE4CF011134B4 /* UnlockView.swift in Sources */,
 				BA2745190E7CFB897313C891 /* UnlockViewModel.swift in Sources */,
+				0B5AC98FBF4E47B6E885CC96 /* VaultSheets.swift in Sources */,
 				A4B0727BB87FEEEF4BD7A808 /* YasecretApp.swift in Sources */,
 				BE947BDC26162F352A3EBA5F /* yasecret_ffi.swift in Sources */,
 			);

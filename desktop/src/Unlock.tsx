@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import { api, errorText, VaultState } from "./api";
 import { Button, TextInput } from "./ui";
+import { ForgotPasswordSheet, RestoreBackupSheet } from "./vault";
 
 export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
   const [state, setState] = useState<VaultState | null>(null);
@@ -11,6 +12,7 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "forgot" } | { kind: "restore"; file: string } | null>(null);
 
   useEffect(() => {
     api.vaultState().catch((e) => { setError(errorText(e)); return null; }).then(async (s) => {
@@ -76,6 +78,24 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
         <Button type="submit" variant="primary" disabled={busy || !password || (firstRun && !confirm)} className="w-full justify-center">
           {busy ? "Unlocking…" : firstRun ? "Create Vault" : "Unlock"}
         </Button>
+        <div className="flex gap-4 text-[13px]">
+          {!firstRun && <button type="button" className="text-accent hover:underline" onClick={() => setDialog({ kind: "forgot" })}>Forgot password?</button>}
+          <button
+            type="button"
+            className="text-accent hover:underline"
+            onClick={async () => {
+              setError(null);
+              try {
+                const file = await api.pickBackup();
+                if (file) setDialog({ kind: "restore", file });
+              } catch (e) {
+                setError(errorText(e));
+              }
+            }}
+          >
+            Restore from backup…
+          </button>
+        </div>
         {state.hasRemembered && !firstRun && (
           <div className="flex gap-1">
             <Button variant="ghost" onClick={useSaved} disabled={busy}>{state.hello ? "Unlock with Windows Hello" : "Unlock with saved password"}</Button>
@@ -92,6 +112,10 @@ export default function Unlock({ onUnlocked }: { onUnlocked: () => void }) {
           </div>
         )}
       </form>
+      {dialog?.kind === "forgot" && <ForgotPasswordSheet onClose={() => setDialog(null)} onUnlocked={onUnlocked} />}
+      {dialog?.kind === "restore" && (
+        <RestoreBackupSheet fileName={dialog.file} replaces={!firstRun} onClose={() => setDialog(null)} onUnlocked={onUnlocked} />
+      )}
     </div>
   );
 }

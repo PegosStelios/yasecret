@@ -35,6 +35,15 @@ export const api = {
   vaultState: () => invoke<VaultState>("vault_state"),
   unlock: (password: string, confirm: string | null, remember: boolean) => invoke<void>("unlock", { password, confirm, remember }),
   unlockRemembered: () => invoke<void>("unlock_remembered"),
+  changePassword: (old: string, next: string) => invoke<void>("change_password", { old, new: next }),
+  createRecoveryKey: () => invoke<string>("create_recovery_key"),
+  hasRecoveryKey: () => invoke<boolean>("has_recovery_key"),
+  /** Save dialog + encrypted backup; resolves to the file name, or null when cancelled. */
+  backupVault: () => invoke<string | null>("backup_vault"),
+  recoverVault: (key: string, next: string) => invoke<void>("recover_vault", { key, new: next }),
+  /** Open dialog for a backup; resolves to its file name, or null when cancelled. */
+  pickBackup: () => invoke<string | null>("pick_backup"),
+  restoreBackup: (password: string) => invoke<void>("restore_backup", { password }),
   devUnlock: () => invoke<void>("dev_unlock"),
   lock: () => invoke<void>("lock"),
   forgetPassword: () => invoke<void>("forget_password"),

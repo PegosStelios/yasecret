@@ -13,6 +13,13 @@ final class AppState {
     var syncError: String?
     /// A yasecret://join link opened from outside the app, waiting for the Join sheet.
     var pendingJoinLink: String?
+    /// Vault menu sheet to show over the main window.
+    var vaultSheet: VaultSheet?
+
+    enum VaultSheet: String, Identifiable {
+        case changePassword, recoveryKey
+        var id: String { rawValue }
+    }
     private var lastSyncRevision: UInt64 = 0
     private var syncTimer: Timer?
     private var lastKnownMcpCount: Int = 0
@@ -31,6 +38,11 @@ final class AppState {
     }
 
     func didUnlock() {
+        switch DevHook.open {
+        case "change-password": vaultSheet = .changePassword
+        case "recovery-key": vaultSheet = .recoveryKey
+        default: break
+        }
         startMcpPolling()
         startSync()
         checkExpiry()
@@ -63,6 +75,50 @@ final class AppState {
         syncRunning = false
         session = nil
         isLocked = true
+    }
+
+    /// Opens the vault with `password` and starts everything that runs while unlocked.
+    func unlock(password: String) async throws {
+        let path = VaultLocation.dbPath
+        let opened = try await Task.detached { try YasecretSession(dbPath: path, password: password) }.value
+        session = opened
+        isLocked = false
+        didUnlock()
+    }
+
+    /// Changes the master password. The current one is checked before anything is locked, so
+    /// a typo can't lock you out; the vault is closed while it's re-encrypted.
+    func changePassword(old: String, new: String) async throws {
+        let path = VaultLocation.dbPath
+        _ = try await Task.detached { try YasecretSession(dbPath: path, password: old) }.value
+        lock()
+        do {
+            try await Task.detached { try changeMasterPassword(dbPath: path, oldPassword: old, newPassword: new) }.value
+        } catch {
+            try? await unlock(password: old)
+            throw error
+        }
+        KeychainService(account: VaultLocation.keychainAccount).save(password: new)
+        try await unlock(password: new)
+    }
+
+    func backUp() {
+        guard let session else { return }
+        let panel = NSSavePanel()
+        let day = Date().formatted(.iso8601.year().month().day())
+        panel.nameFieldStringValue = "Yasecret \(day).yasecret-backup"
+        panel.message = "The backup is encrypted. Restoring it needs your current master password."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task.detached {
+            let failure: String?
+            do { try session.backupVault(destPath: url.path); failure = nil } catch { failure = userMessage(error) }
+            await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = failure == nil ? "Vault backed up" : "Couldn't back up the vault"
+                alert.informativeText = failure ?? "Saved to \(url.lastPathComponent). Keep it with your other backups; restoring it needs the master password you have now."
+                alert.runModal()
+            }
+        }
     }
 
     private func startSync() {

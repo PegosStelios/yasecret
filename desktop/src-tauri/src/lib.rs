@@ -20,6 +20,8 @@ struct Vault {
     session: Arc<Mutex<Option<Arc<YasecretSession>>>>,
     /// Why background sync failed to start, if it did.
     sync_error: Arc<Mutex<Option<String>>>,
+    /// Backup file the user picked to restore; kept here so the page never handles paths.
+    pending_backup: Mutex<Option<std::path::PathBuf>>,
 }
 
 impl Vault {
@@ -185,6 +187,114 @@ async fn lock(vault: State<'_, Vault>) -> CmdResult<()> {
         tauri::async_runtime::spawn_blocking(move || s.stop_sync()).await.map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Closes the session (stopping sync) so the vault file can be rewritten.
+async fn close_session(vault: &Vault) -> CmdResult<()> {
+    let session = vault.session.lock().unwrap().take();
+    if let Some(s) = session {
+        tauri::async_runtime::spawn_blocking(move || s.stop_sync()).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+async fn run_blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, FfiError> + Send + 'static) -> CmdResult<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?.map_err(message)
+}
+
+/// The saved password (if any) follows a password change.
+fn update_remembered(db_path: &str, password: &str) {
+    if let Some(entry) = keyring_entry(db_path) {
+        if entry.get_password().is_ok() {
+            let _ = entry.set_password(password);
+        }
+    }
+}
+
+/// Checks the current password before closing anything, so a typo can't lock the user out.
+#[tauri::command]
+async fn change_password(vault: State<'_, Vault>, old: String, new: String) -> CmdResult<()> {
+    let path = vault.db_path.clone();
+    let (p, o) = (path.clone(), old.clone());
+    run_blocking(move || YasecretSession::new(p, o).map(|_| ()))
+        .await
+        .map_err(|_| "The current password isn't right".to_string())?;
+    close_session(&vault).await?;
+    let (p, o, n) = (path.clone(), old.clone(), new.clone());
+    if let Err(e) = run_blocking(move || yasecret_ffi::change_master_password(p, o, n)).await {
+        let _ = open_session(&vault, old).await;
+        return Err(e);
+    }
+    update_remembered(&path, &new);
+    open_session(&vault, new).await
+}
+
+#[tauri::command]
+async fn create_recovery_key(vault: State<'_, Vault>) -> CmdResult<String> {
+    blocking(&vault, |s| s.create_recovery_key()).await
+}
+
+#[tauri::command]
+fn has_recovery_key(vault: State<'_, Vault>) -> bool {
+    yasecret_ffi::vault_has_recovery_key(vault.db_path.clone())
+}
+
+/// Save dialog, then an encrypted backup. Returns the file name, or None when cancelled.
+#[tauri::command]
+async fn backup_vault(app: tauri::AppHandle, vault: State<'_, Vault>) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let session = vault.session()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(picked) = app.dialog().file().set_file_name("Yasecret.yasecret-backup").blocking_save_file() else { return Ok(None) };
+        let path = picked.into_path().map_err(|e| e.to_string())?;
+        session.backup_vault(path.to_string_lossy().into_owned()).map_err(message)?;
+        Ok(Some(file_name(&path)))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Resets a forgotten password with the recovery key, then unlocks with the new one.
+#[tauri::command]
+async fn recover_vault(vault: State<'_, Vault>, key: String, new: String) -> CmdResult<()> {
+    close_session(&vault).await?;
+    let path = vault.db_path.clone();
+    let (p, n) = (path.clone(), new.clone());
+    run_blocking(move || yasecret_ffi::recover_vault(p, key, n)).await?;
+    update_remembered(&path, &new);
+    open_session(&vault, new).await
+}
+
+/// Open dialog for a backup file; remembers the choice for `restore_backup`.
+#[tauri::command]
+async fn pick_backup(app: tauri::AppHandle, vault: State<'_, Vault>) -> CmdResult<Option<String>> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| e.to_string())?;
+    let name = file_name(&path);
+    *vault.pending_backup.lock().unwrap() = Some(path);
+    Ok(Some(name))
+}
+
+/// Replaces the vault with the picked backup and unlocks it with `password`.
+#[tauri::command]
+async fn restore_backup(vault: State<'_, Vault>, password: String) -> CmdResult<()> {
+    let backup = vault.pending_backup.lock().unwrap().clone().ok_or_else(|| "Choose a backup file first".to_string())?;
+    close_session(&vault).await?;
+    let path = vault.db_path.clone();
+    let (b, p, pw) = (backup.to_string_lossy().into_owned(), path.clone(), password.clone());
+    run_blocking(move || yasecret_ffi::restore_vault_backup(b, p, pw)).await.map_err(|e| {
+        if e.contains("Wrong") || e.contains("wrong") { "That password doesn't open this backup".to_string() } else { e }
+    })?;
+    vault.pending_backup.lock().unwrap().take();
+    // A saved password belonged to the vault that was replaced.
+    if let Some(entry) = keyring_entry(&path) {
+        let _ = entry.delete_credential();
+    }
+    open_session(&vault, password).await
 }
 
 #[tauri::command]
@@ -564,7 +674,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .manage(Vault { db_path: db_path(), session: Arc::new(Mutex::new(None)), sync_error: Arc::new(Mutex::new(None)) })
+        .manage(Vault {
+            db_path: db_path(),
+            session: Arc::new(Mutex::new(None)),
+            sync_error: Arc::new(Mutex::new(None)),
+            pending_backup: Mutex::new(None),
+        })
         .setup(|app| {
             use tauri_plugin_deep_link::DeepLinkExt;
             #[cfg(any(windows, target_os = "linux"))]
@@ -584,6 +699,13 @@ pub fn run() {
             dev_unlock,
             lock,
             forget_password,
+            change_password,
+            create_recovery_key,
+            has_recovery_key,
+            backup_vault,
+            recover_vault,
+            pick_backup,
+            restore_backup,
             list_projects,
             shared_project_ids,
             create_project,

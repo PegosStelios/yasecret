@@ -61,6 +61,8 @@ targets:
     preBuildScripts:
       - name: "Build Rust FFI"
         script: '"${SRCROOT}/Scripts/build_rust.sh"'
+        # Cargo decides what to rebuild; Xcode must not skip this as "up to date".
+        basedOnDependencyAnalysis: false
         outputFiles:
           - "$(SRCROOT)/Generated/yasecret_ffi.swift"
           - "$(SRCROOT)/Generated/yasecret_ffiFFI.h"

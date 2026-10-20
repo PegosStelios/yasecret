@@ -4,6 +4,26 @@ struct UnlockView: View {
     @Environment(AppState.self) private var appState
     @State private var vm: UnlockViewModel?
     @FocusState private var focus: Field?
+    @State private var sheet: UnlockSheet?
+
+    private enum UnlockSheet: Identifiable {
+        case forgot
+        case restore(URL)
+        var id: String {
+            switch self {
+            case .forgot: "forgot"
+            case .restore(let url): url.path
+            }
+        }
+    }
+
+    private func chooseBackup() {
+        let panel = NSOpenPanel()
+        panel.message = "Choose a Yasecret backup"
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        sheet = .restore(url)
+    }
 
     private enum Field { case password, confirm }
 
@@ -67,20 +87,41 @@ struct UnlockView: View {
                 .disabled(!canSubmit(vm))
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
+
+                HStack(spacing: 16) {
+                    if !vm.isFirstRun {
+                        Button("Forgot Password?") { sheet = .forgot }
+                    }
+                    Button("Restore from Backup…", action: chooseBackup)
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+            }
+        }
+        .sheet(item: $sheet) { which in
+            if let vm {
+                switch which {
+                case .forgot:
+                    ForgotPasswordSheet { newPassword in
+                        vm.password = newPassword
+                        await vm.unlock()
+                    }
+                case .restore(let file):
+                    RestoreBackupSheet(file: file, replacesVault: !vm.isFirstRun) { password in
+                        vm.isFirstRun = false
+                        vm.password = password
+                        await vm.unlock()
+                    }
+                }
             }
         }
         .disabled(vm?.isUnlocking == true)
-        .frame(width: 360, height: 320)
+        .frame(width: 360, height: 340)
         .task {
             // Debug builds can open a throwaway vault (and Keychain slot) for UI testing.
-            #if DEBUG
-            let override = ProcessInfo.processInfo.environment["YASECRET_DB_PATH"]
-            #else
-            let override: String? = nil
-            #endif
-            let dbPath = override ?? defaultDbPath()
-            let newVm = UnlockViewModel(appState: appState, dbPath: dbPath,
-                                        keychainAccount: override.map { "dev-\($0)" } ?? "default")
+            let override = VaultLocation.override
+            let newVm = UnlockViewModel(appState: appState, dbPath: VaultLocation.dbPath,
+                                        keychainAccount: VaultLocation.keychainAccount)
             vm = newVm
             focus = .password
             #if DEBUG

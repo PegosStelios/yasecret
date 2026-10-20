@@ -60,7 +60,10 @@ body {
   user-select: none;
   overflow: hidden;
 }
-input, textarea, select, button { font: inherit; color: inherit; }
+/* In the base layer so Tailwind text-colour utilities on buttons and inputs win. */
+@layer base {
+  input, textarea, select, button { font: inherit; color: inherit; }
+}
 .selectable { user-select: text; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--raised); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }

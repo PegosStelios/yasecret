@@ -27,6 +27,15 @@ struct YasecretApp: App {
                     .disabled(appState.isLocked)
                 .keyboardShortcut("l", modifiers: [.command, .shift])
             }
+            CommandMenu("Vault") {
+                Button("Change Master Password…") { appState.vaultSheet = .changePassword }
+                    .disabled(appState.isLocked)
+                Button("Recovery Key…") { appState.vaultSheet = .recoveryKey }
+                    .disabled(appState.isLocked)
+                Divider()
+                Button("Back Up Vault…") { appState.backUp() }
+                    .disabled(appState.isLocked)
+            }
         }
     }
 }

@@ -276,6 +276,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_add_relay(void*_Nonnull
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_apply_import(void*_Nonnull ptr, RustBuffer project_id, RustBuffer env_id, RustBuffer items, int8_t overwrite, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_BACKUP_VAULT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_BACKUP_VAULT
+void uniffi_yasecret_ffi_fn_method_yasecretsession_backup_vault(void*_Nonnull ptr, RustBuffer dest_path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CLONE_ENVIRONMENT
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_clone_environment(void*_Nonnull ptr, RustBuffer env_id, RustBuffer new_name, RustCallStatus *_Nonnull out_status
@@ -299,6 +304,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_invite(void*_Non
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_PROJECT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_PROJECT
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_project(void*_Nonnull ptr, RustBuffer name, RustBuffer description, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_RECOVERY_KEY
+RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_create_recovery_key(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_CREATE_SECRET
@@ -349,6 +359,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_get_secret_plaintext(vo
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_GRANT_MCP_ACCESS
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_GRANT_MCP_ACCESS
 void uniffi_yasecret_ffi_fn_method_yasecretsession_grant_mcp_access(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_HAS_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_HAS_RECOVERY_KEY
+int8_t uniffi_yasecret_ffi_fn_method_yasecretsession_has_recovery_key(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_IMPORT_ENV
@@ -476,6 +491,11 @@ RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_sync_status(void*_Nonnu
 void uniffi_yasecret_ffi_fn_method_yasecretsession_update_secret(void*_Nonnull ptr, RustBuffer project_id, RustBuffer secret_id, RustBuffer new_value, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_CHANGE_MASTER_PASSWORD
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_CHANGE_MASTER_PASSWORD
+void uniffi_yasecret_ffi_fn_func_change_master_password(RustBuffer db_path, RustBuffer old_password, RustBuffer new_password, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_DEFAULT_DB_PATH
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_DEFAULT_DB_PATH
 RustBuffer uniffi_yasecret_ffi_fn_func_default_db_path(RustCallStatus *_Nonnull out_status
@@ -490,6 +510,21 @@ int8_t uniffi_yasecret_ffi_fn_func_is_valid_key(RustBuffer key, RustCallStatus *
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_LOOKS_SECRET
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_LOOKS_SECRET
 int8_t uniffi_yasecret_ffi_fn_func_looks_secret(RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RECOVER_VAULT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RECOVER_VAULT
+void uniffi_yasecret_ffi_fn_func_recover_vault(RustBuffer db_path, RustBuffer recovery_key, RustBuffer new_password, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
+void uniffi_yasecret_ffi_fn_func_restore_vault_backup(RustBuffer backup_path, RustBuffer db_path, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_VAULT_HAS_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_VAULT_HAS_RECOVERY_KEY
+int8_t uniffi_yasecret_ffi_fn_func_vault_has_recovery_key(RustBuffer db_path, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_YASECRET_FFI_RUSTBUFFER_ALLOC
@@ -772,6 +807,12 @@ void ffi_yasecret_ffi_rust_future_free_void(uint64_t handle
 void ffi_yasecret_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_CHANGE_MASTER_PASSWORD
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_CHANGE_MASTER_PASSWORD
+uint16_t uniffi_yasecret_ffi_checksum_func_change_master_password(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_DEFAULT_DB_PATH
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_DEFAULT_DB_PATH
 uint16_t uniffi_yasecret_ffi_checksum_func_default_db_path(void
@@ -790,6 +831,24 @@ uint16_t uniffi_yasecret_ffi_checksum_func_looks_secret(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RECOVER_VAULT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RECOVER_VAULT
+uint16_t uniffi_yasecret_ffi_checksum_func_recover_vault(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RESTORE_VAULT_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RESTORE_VAULT_BACKUP
+uint16_t uniffi_yasecret_ffi_checksum_func_restore_vault_backup(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VAULT_HAS_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VAULT_HAS_RECOVERY_KEY
+uint16_t uniffi_yasecret_ffi_checksum_func_vault_has_recovery_key(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_ADD_RELAY
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_ADD_RELAY
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_add_relay(void
@@ -799,6 +858,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_add_relay(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_APPLY_IMPORT
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_BACKUP_VAULT
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_BACKUP_VAULT
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_backup_vault(void
     
 );
 #endif
@@ -829,6 +894,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_create_invite(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_PROJECT
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_PROJECT
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_create_project(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_CREATE_RECOVERY_KEY
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_create_recovery_key(void
     
 );
 #endif
@@ -889,6 +960,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_get_secret_plaintex
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_GRANT_MCP_ACCESS
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_GRANT_MCP_ACCESS
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_grant_mcp_access(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_HAS_RECOVERY_KEY
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_HAS_RECOVERY_KEY
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_has_recovery_key(void
     
 );
 #endif

@@ -41,6 +41,12 @@ Tagged versions are published on the [Releases](../../releases) page: a Windows 
 
 **Cutting a release:** bump `version` in `desktop/src-tauri/tauri.conf.json`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The [Release](.github/workflows/release.yml) workflow builds both apps into a draft release; publishing the draft makes the update available. It needs the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets; the Mac app is signed with the certificate in `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY`. Replacing that with a Developer ID certificate and adding `APPLE_ID`, `APPLE_APP_PASSWORD` and `APPLE_TEAM_ID` also notarizes it (users will need to allow Keychain access once after that switch).
 
+## Recovery and backups
+
+Set up a **recovery key** (Mac: *Vault → Recovery Key…*; Windows: the key button in the sidebar; CLI: `yasecret vault recovery-key`). It's shown once; keep it offline. If you forget the master password, use *Forgot password?* on the unlock screen (or `yasecret vault recover`) to set a new one. Changing the master password keeps the recovery key working; making a new key retires the old one.
+
+**Back Up Vault** writes one encrypted file with every project. Restore it from the unlock screen (*Restore from backup…*) or with `yasecret vault restore <file>`, using the master password the vault had when the backup was made.
+
 ## How sharing works
 
 Each project you share becomes a replicated document synced over [iroh](https://iroh.computer) (QUIC with NAT traversal and public relays). There is no Yasecret server; devices talk directly whenever both are open and unlocked.

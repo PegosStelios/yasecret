@@ -521,6 +521,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func applyImport(projectId: String, envId: String, items: [FfiImportItem], overwrite: Bool) throws  -> FfiImportSummary
     
+    /**
+     * Writes an encrypted backup of the whole vault. Restoring it needs the current password.
+     */
+    func backupVault(destPath: String) throws 
+    
     func cloneEnvironment(envId: String, newName: String) throws  -> FfiEnvironment
     
     func compareEnvironments(projectId: String, leftEnvId: String, rightEnvId: String) throws  -> [FfiDiffRow]
@@ -533,6 +538,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     func createInvite(projectId: String, deviceCode: String?, level: String) throws  -> String
     
     func createProject(name: String, description: String?) throws  -> FfiProject
+    
+    /**
+     * Makes a new recovery key, retiring any previous one. Show it once; it isn't stored.
+     */
+    func createRecoveryKey() throws  -> String
     
     func createSecret(projectId: String, envId: String, key: String, value: String, expiresAt: Int64?, isSecret: Bool) throws  -> FfiSecret
     
@@ -563,6 +573,8 @@ public protocol YasecretSessionProtocol : AnyObject {
     func getSecretPlaintext(projectId: String, secretId: String) throws  -> String
     
     func grantMcpAccess() throws 
+    
+    func hasRecoveryKey()  -> Bool
     
     func importEnv(projectId: String, envId: String, content: String) throws  -> UInt32
     
@@ -726,6 +738,16 @@ open func applyImport(projectId: String, envId: String, items: [FfiImportItem], 
 })
 }
     
+    /**
+     * Writes an encrypted backup of the whole vault. Restoring it needs the current password.
+     */
+open func backupVault(destPath: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_backup_vault(self.uniffiClonePointer(),
+        FfiConverterString.lower(destPath),$0
+    )
+}
+}
+    
 open func cloneEnvironment(envId: String, newName: String)throws  -> FfiEnvironment {
     return try  FfiConverterTypeFfiEnvironment.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_clone_environment(self.uniffiClonePointer(),
@@ -772,6 +794,16 @@ open func createProject(name: String, description: String?)throws  -> FfiProject
     uniffi_yasecret_ffi_fn_method_yasecretsession_create_project(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
         FfiConverterOptionString.lower(description),$0
+    )
+})
+}
+    
+    /**
+     * Makes a new recovery key, retiring any previous one. Show it once; it isn't stored.
+     */
+open func createRecoveryKey()throws  -> String {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_create_recovery_key(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -873,6 +905,13 @@ open func grantMcpAccess()throws  {try rustCallWithError(FfiConverterTypeFfiErro
     uniffi_yasecret_ffi_fn_method_yasecretsession_grant_mcp_access(self.uniffiClonePointer(),$0
     )
 }
+}
+    
+open func hasRecoveryKey() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_has_recovery_key(self.uniffiClonePointer(),$0
+    )
+})
 }
     
 open func importEnv(projectId: String, envId: String, content: String)throws  -> UInt32 {
@@ -2719,6 +2758,17 @@ fileprivate struct FfiConverterSequenceTypeFfiVersion: FfiConverterRustBuffer {
         return seq
     }
 }
+/**
+ * Changes the master password. Close (lock) any session on this vault first.
+ */
+public func changeMasterPassword(dbPath: String, oldPassword: String, newPassword: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_func_change_master_password(
+        FfiConverterString.lower(dbPath),
+        FfiConverterString.lower(oldPassword),
+        FfiConverterString.lower(newPassword),$0
+    )
+}
+}
 public func defaultDbPath() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_yasecret_ffi_fn_func_default_db_path($0
@@ -2739,6 +2789,36 @@ public func looksSecret(key: String) -> Bool {
     )
 })
 }
+/**
+ * Sets a new master password using the recovery key. The vault must be locked.
+ */
+public func recoverVault(dbPath: String, recoveryKey: String, newPassword: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_func_recover_vault(
+        FfiConverterString.lower(dbPath),
+        FfiConverterString.lower(recoveryKey),
+        FfiConverterString.lower(newPassword),$0
+    )
+}
+}
+/**
+ * Replaces the vault with a backup once `password` (the password when the backup was made)
+ * opens it. The vault must be locked.
+ */
+public func restoreVaultBackup(backupPath: String, dbPath: String, password: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_func_restore_vault_backup(
+        FfiConverterString.lower(backupPath),
+        FfiConverterString.lower(dbPath),
+        FfiConverterString.lower(password),$0
+    )
+}
+}
+public func vaultHasRecoveryKey(dbPath: String) -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_vault_has_recovery_key(
+        FfiConverterString.lower(dbPath),$0
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -2755,6 +2835,9 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_func_change_master_password() != 7667) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_func_default_db_path() != 45430) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2764,10 +2847,22 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_func_looks_secret() != 50216) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_func_recover_vault() != 58557) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_restore_vault_backup() != 16779) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_vault_has_recovery_key() != 1147) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_add_relay() != 60303) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_apply_import() != 36276) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_backup_vault() != 27439) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_clone_environment() != 3605) {
@@ -2783,6 +2878,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_project() != 39110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_recovery_key() != 7569) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_create_secret() != 7546) {
@@ -2813,6 +2911,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_grant_mcp_access() != 27318) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_has_recovery_key() != 33445) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_import_env() != 66) {
