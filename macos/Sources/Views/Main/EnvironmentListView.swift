@@ -174,7 +174,16 @@ struct EnvironmentListView: View {
                               onCommit: commitRename, onCancel: { renamingId = nil })
         } else {
             HStack {
-                Label(env.name, systemImage: icon(for: env.name))
+                Label {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(env.name)
+                        if let parent = vm.environments.first(where: { $0.id == env.inheritsFrom }) {
+                            Text("inherits \(parent.name)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                } icon: {
+                    Image(systemName: icon(for: env.name))
+                }
                 Spacer()
                 Text("\(env.secretCount)")
                     .font(.caption.monospacedDigit())
@@ -186,6 +195,23 @@ struct EnvironmentListView: View {
                     Menu("Compare With") {
                         ForEach(others) { other in
                             Button(other.name) { comparing = ComparePair(left: env, right: other) }
+                        }
+                    }
+                }
+                if !readOnly && !others.isEmpty {
+                    Menu("Inherit From") {
+                        Button {
+                            if let session = appState.session { vm.setParent(id: env.id, parentId: nil, session: session) }
+                        } label: {
+                            if env.inheritsFrom == nil { Label("Nothing", systemImage: "checkmark") } else { Text("Nothing") }
+                        }
+                        Divider()
+                        ForEach(others) { other in
+                            Button {
+                                if let session = appState.session { vm.setParent(id: env.id, parentId: other.id, session: session) }
+                            } label: {
+                                if env.inheritsFrom == other.id { Label(other.name, systemImage: "checkmark") } else { Text(other.name) }
+                            }
                         }
                     }
                 }

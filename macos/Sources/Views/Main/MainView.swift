@@ -27,7 +27,8 @@ struct MainView: View {
             if let env = envsVM.selectedEnvironment, let proj = selectedProject {
                 SecretListView(vm: secretsVM, projectId: proj.id, envId: env.id, envName: env.name,
                                projectName: proj.name, readOnly: sharingVM.isReadOnly, onChanged: refreshEnvironmentCounts)
-                    .id(env.id)
+                    // Rebuilt when the parent changes, so inherited variables reload.
+                    .id("\(env.id)|\(env.inheritsFrom ?? "")")
             } else {
                 ContentUnavailableView("Select an environment", systemImage: "list.bullet.rectangle")
             }

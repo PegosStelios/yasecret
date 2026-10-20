@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
 export type Project = { id: string; name: string; description: string | null };
-export type Environment = { id: string; projectId: string; name: string; secretCount: number };
+export type Environment = { id: string; projectId: string; name: string; secretCount: number; inheritsFrom: string | null };
+/** A variable an environment gets from a parent and doesn't override. */
+export type InheritedVar = { key: string; value: string | null; isSecret: boolean; fromEnv: string; secretId: string };
 export type Secret = { id: string; envId: string; key: string; expiresAt: number | null; isSecret: boolean; updatedAt: number };
 export type ImportRow = { key: string; value: string; exists: boolean; suggestedSecret: boolean };
 export type ImportItem = { key: string; value: string; isSecret: boolean };
@@ -57,6 +59,8 @@ export const api = {
   listEnvironments: (projectId: string) => invoke<Environment[]>("list_environments", { projectId }),
   createEnvironment: (projectId: string, name: string) => invoke<Environment>("create_environment", { projectId, name }),
   renameEnvironment: (envId: string, name: string) => invoke<void>("rename_environment", { envId, name }),
+  setEnvironmentParent: (envId: string, parentId: string | null) => invoke<void>("set_environment_parent", { envId, parentId }),
+  listInherited: (envId: string) => invoke<InheritedVar[]>("list_inherited", { envId }),
   cloneEnvironment: (envId: string, name: string) => invoke<Environment>("clone_environment", { envId, name }),
   deleteEnvironment: (envId: string) => invoke<void>("delete_environment", { envId }),
 

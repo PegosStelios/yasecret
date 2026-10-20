@@ -9,7 +9,7 @@ use serde::Serialize;
 use tauri::{Emitter, State};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use yasecret_ffi::{
-    FfiActivity, FfiDiffRow, FfiEnvironment, FfiError, FfiImportItem, FfiImportRow, FfiImportSummary, FfiMember, FfiRelay,
+    FfiActivity, FfiDiffRow, FfiEnvironment, FfiError, FfiImportItem, FfiImportRow, FfiImportSummary, FfiInheritedVar, FfiMember, FfiRelay,
     FfiProject, FfiSecret, FfiSyncStatus, FfiVersion, YasecretSession,
 };
 
@@ -348,6 +348,16 @@ async fn list_environments(vault: State<'_, Vault>, project_id: String) -> CmdRe
 #[tauri::command]
 async fn create_environment(vault: State<'_, Vault>, project_id: String, name: String) -> CmdResult<FfiEnvironment> {
     blocking(&vault, move |s| s.create_environment(project_id, name)).await
+}
+
+#[tauri::command]
+async fn set_environment_parent(vault: State<'_, Vault>, env_id: String, parent_id: Option<String>) -> CmdResult<()> {
+    blocking(&vault, move |s| s.set_environment_parent(env_id, parent_id)).await
+}
+
+#[tauri::command]
+async fn list_inherited(vault: State<'_, Vault>, env_id: String) -> CmdResult<Vec<FfiInheritedVar>> {
+    blocking(&vault, move |s| s.list_inherited(env_id)).await
 }
 
 #[tauri::command]
@@ -714,6 +724,8 @@ pub fn run() {
             list_environments,
             create_environment,
             rename_environment,
+            set_environment_parent,
+            list_inherited,
             clone_environment,
             delete_environment,
             list_secrets,

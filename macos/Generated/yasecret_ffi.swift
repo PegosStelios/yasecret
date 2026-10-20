@@ -590,6 +590,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     
     func listEnvironments(projectId: String) throws  -> [FfiEnvironment]
     
+    /**
+     * Variables inherited from parent environments that this environment doesn't override.
+     */
+    func listInherited(envId: String) throws  -> [FfiInheritedVar]
+    
     func listMembers(projectId: String) throws  -> [FfiMember]
     
     func listProjects() throws  -> [FfiProject]
@@ -619,6 +624,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     func renameProject(projectId: String, newName: String) throws 
     
     func restoreVersion(projectId: String, secretId: String, versionId: String) throws 
+    
+    /**
+     * Makes the environment inherit `parent_id`'s variables (same project), or stop with `None`.
+     */
+    func setEnvironmentParent(envId: String, parentId: String?) throws 
     
     func setExpiry(projectId: String, secretId: String, expiresAt: Int64?) throws 
     
@@ -955,6 +965,17 @@ open func listEnvironments(projectId: String)throws  -> [FfiEnvironment] {
 })
 }
     
+    /**
+     * Variables inherited from parent environments that this environment doesn't override.
+     */
+open func listInherited(envId: String)throws  -> [FfiInheritedVar] {
+    return try  FfiConverterSequenceTypeFfiInheritedVar.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_list_inherited(self.uniffiClonePointer(),
+        FfiConverterString.lower(envId),$0
+    )
+})
+}
+    
 open func listMembers(projectId: String)throws  -> [FfiMember] {
     return try  FfiConverterSequenceTypeFfiMember.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_list_members(self.uniffiClonePointer(),
@@ -1053,6 +1074,17 @@ open func restoreVersion(projectId: String, secretId: String, versionId: String)
         FfiConverterString.lower(projectId),
         FfiConverterString.lower(secretId),
         FfiConverterString.lower(versionId),$0
+    )
+}
+}
+    
+    /**
+     * Makes the environment inherit `parent_id`'s variables (same project), or stop with `None`.
+     */
+open func setEnvironmentParent(envId: String, parentId: String?)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_set_environment_parent(self.uniffiClonePointer(),
+        FfiConverterString.lower(envId),
+        FfiConverterOptionString.lower(parentId),$0
     )
 }
 }
@@ -1403,14 +1435,22 @@ public struct FfiEnvironment {
     public var projectId: String
     public var name: String
     public var secretCount: UInt32
+    /**
+     * Environment this one inherits variables from.
+     */
+    public var inheritsFrom: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, projectId: String, name: String, secretCount: UInt32) {
+    public init(id: String, projectId: String, name: String, secretCount: UInt32, 
+        /**
+         * Environment this one inherits variables from.
+         */inheritsFrom: String?) {
         self.id = id
         self.projectId = projectId
         self.name = name
         self.secretCount = secretCount
+        self.inheritsFrom = inheritsFrom
     }
 }
 
@@ -1430,6 +1470,9 @@ extension FfiEnvironment: Equatable, Hashable {
         if lhs.secretCount != rhs.secretCount {
             return false
         }
+        if lhs.inheritsFrom != rhs.inheritsFrom {
+            return false
+        }
         return true
     }
 
@@ -1438,6 +1481,7 @@ extension FfiEnvironment: Equatable, Hashable {
         hasher.combine(projectId)
         hasher.combine(name)
         hasher.combine(secretCount)
+        hasher.combine(inheritsFrom)
     }
 }
 
@@ -1452,7 +1496,8 @@ public struct FfiConverterTypeFfiEnvironment: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 projectId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
-                secretCount: FfiConverterUInt32.read(from: &buf)
+                secretCount: FfiConverterUInt32.read(from: &buf), 
+                inheritsFrom: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -1461,6 +1506,7 @@ public struct FfiConverterTypeFfiEnvironment: FfiConverterRustBuffer {
         FfiConverterString.write(value.projectId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterUInt32.write(value.secretCount, into: &buf)
+        FfiConverterOptionString.write(value.inheritsFrom, into: &buf)
     }
 }
 
@@ -1707,6 +1753,111 @@ public func FfiConverterTypeFfiImportSummary_lift(_ buf: RustBuffer) throws -> F
 #endif
 public func FfiConverterTypeFfiImportSummary_lower(_ value: FfiImportSummary) -> RustBuffer {
     return FfiConverterTypeFfiImportSummary.lower(value)
+}
+
+
+/**
+ * A variable an environment gets from a parent and doesn't override.
+ */
+public struct FfiInheritedVar {
+    public var key: String
+    /**
+     * Plain variables only; reveal secrets through `secret_id`.
+     */
+    public var value: String?
+    public var isSecret: Bool
+    public var fromEnv: String
+    /**
+     * The variable in the environment it comes from.
+     */
+    public var secretId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, 
+        /**
+         * Plain variables only; reveal secrets through `secret_id`.
+         */value: String?, isSecret: Bool, fromEnv: String, 
+        /**
+         * The variable in the environment it comes from.
+         */secretId: String) {
+        self.key = key
+        self.value = value
+        self.isSecret = isSecret
+        self.fromEnv = fromEnv
+        self.secretId = secretId
+    }
+}
+
+
+
+extension FfiInheritedVar: Equatable, Hashable {
+    public static func ==(lhs: FfiInheritedVar, rhs: FfiInheritedVar) -> Bool {
+        if lhs.key != rhs.key {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.isSecret != rhs.isSecret {
+            return false
+        }
+        if lhs.fromEnv != rhs.fromEnv {
+            return false
+        }
+        if lhs.secretId != rhs.secretId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(key)
+        hasher.combine(value)
+        hasher.combine(isSecret)
+        hasher.combine(fromEnv)
+        hasher.combine(secretId)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiInheritedVar: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiInheritedVar {
+        return
+            try FfiInheritedVar(
+                key: FfiConverterString.read(from: &buf), 
+                value: FfiConverterOptionString.read(from: &buf), 
+                isSecret: FfiConverterBool.read(from: &buf), 
+                fromEnv: FfiConverterString.read(from: &buf), 
+                secretId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiInheritedVar, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterOptionString.write(value.value, into: &buf)
+        FfiConverterBool.write(value.isSecret, into: &buf)
+        FfiConverterString.write(value.fromEnv, into: &buf)
+        FfiConverterString.write(value.secretId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiInheritedVar_lift(_ buf: RustBuffer) throws -> FfiInheritedVar {
+    return try FfiConverterTypeFfiInheritedVar.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiInheritedVar_lower(_ value: FfiInheritedVar) -> RustBuffer {
+    return FfiConverterTypeFfiInheritedVar.lower(value)
 }
 
 
@@ -2637,6 +2788,31 @@ fileprivate struct FfiConverterSequenceTypeFfiImportRow: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiInheritedVar: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiInheritedVar]
+
+    public static func write(_ value: [FfiInheritedVar], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiInheritedVar.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiInheritedVar] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiInheritedVar]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiInheritedVar.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiMember: FfiConverterRustBuffer {
     typealias SwiftType = [FfiMember]
 
@@ -2928,6 +3104,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_environments() != 36554) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_inherited() != 48152) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_list_members() != 18426) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2962,6 +3141,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_restore_version() != 50406) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_environment_parent() != 48963) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_expiry() != 25215) {

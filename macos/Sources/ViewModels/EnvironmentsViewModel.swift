@@ -15,6 +15,12 @@ final class EnvironmentsViewModel {
             environments = try session.listEnvironments(projectId: projectId)
             if selectedEnvId == nil || !environments.contains(where: { $0.id == selectedEnvId }) {
                 selectedEnvId = environments.first?.id
+                #if DEBUG
+                if let name = ProcessInfo.processInfo.environment["YASECRET_DEV_ENV"],
+                   let match = environments.first(where: { $0.name == name }) {
+                    selectedEnvId = match.id
+                }
+                #endif
             }
         } catch {
             errorMessage = userMessage(error)
@@ -46,6 +52,17 @@ final class EnvironmentsViewModel {
             try session.renameEnvironment(envId: id, newName: newName)
             if let idx = environments.firstIndex(where: { $0.id == id }) {
                 environments[idx].name = newName
+            }
+        } catch {
+            errorMessage = userMessage(error)
+        }
+    }
+
+    func setParent(id: String, parentId: String?, session: YasecretSession) {
+        do {
+            try session.setEnvironmentParent(envId: id, parentId: parentId)
+            if let idx = environments.firstIndex(where: { $0.id == id }) {
+                environments[idx].inheritsFrom = parentId
             }
         } catch {
             errorMessage = userMessage(error)

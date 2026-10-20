@@ -2,6 +2,7 @@ pub mod check;
 pub mod dev;
 pub mod diff;
 pub mod example;
+pub mod inherit;
 pub mod join;
 pub mod mcp;
 pub mod peers;

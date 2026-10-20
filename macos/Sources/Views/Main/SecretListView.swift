@@ -23,6 +23,8 @@ struct SecretListView: View {
     @State private var banner: String?
     @State private var historyFor: FfiSecret?
     @State private var showingExport = false
+    /// Variables from parent environments that this one doesn't override.
+    @State private var inherited: [FfiInheritedVar] = []
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -114,7 +116,10 @@ struct SecretListView: View {
             default: break
             }
         }
-        .task(id: vm.secrets) { loadPlainValues() }
+        .task(id: vm.secrets) {
+            loadPlainValues()
+            inherited = (try? appState.session?.listInherited(envId: envId)) ?? []
+        }
         .task { if DevHook.open == "import" { showingImport = true } }
     }
 
@@ -192,6 +197,83 @@ struct SecretListView: View {
 
     @ViewBuilder
     private var content: some View {
+        if inherited.isEmpty {
+            ownContent
+        } else {
+            VSplitView {
+                ownContent.frame(minHeight: 80)
+                inheritedSection.frame(minHeight: 90)
+            }
+        }
+    }
+
+    private var visibleInherited: [FfiInheritedVar] {
+        let q = vm.searchText.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty ? inherited : inherited.filter { $0.key.localizedCaseInsensitiveContains(q) }
+    }
+
+    private var inheritedSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Inherited · \(plural(inherited.count, "variable"))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+            List(visibleInherited, id: \.key) { v in
+                HStack(spacing: 6) {
+                    Image(systemName: v.isSecret ? "lock.fill" : "textformat")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 14)
+                    Text(v.key).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary)
+                    Text("from \(v.fromEnv)")
+                        .font(.caption2)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(v.isSecret ? (revealed[v.secretId] ?? Layout.mask) : (v.value ?? ""))
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: 260, alignment: .trailing)
+                        .padding(.trailing, 4)
+                    if v.isSecret {
+                        Button { toggleInheritedReveal(v) } label: {
+                            Image(systemName: revealed[v.secretId] == nil ? "eye" : "eye.slash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    if !readOnly {
+                        Button("Override") {
+                            editor = EditorRequest(secret: nil, prefillKey: v.key, prefillSecret: v.isSecret)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.leading, 6)
+                        .help("Give \(envName) its own value for \(v.key)")
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    private func toggleInheritedReveal(_ v: FfiInheritedVar) {
+        if revealed[v.secretId] != nil {
+            revealed[v.secretId] = nil
+            return
+        }
+        guard let session = appState.session,
+              let value = try? session.getSecretPlaintext(projectId: projectId, secretId: v.secretId) else { return }
+        try? session.recordReveal(secretId: v.secretId)
+        revealed[v.secretId] = value
+    }
+
+    @ViewBuilder
+    private var ownContent: some View {
         if vm.secrets.isEmpty {
             ContentUnavailableView {
                 Label("No variables in \(envName)", systemImage: "key")

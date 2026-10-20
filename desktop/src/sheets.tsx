@@ -91,18 +91,20 @@ export function NewProjectSheet({ onCreate, onClose }: { onCreate: (name: string
 const toDateInput = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 10);
 const fromDateInput = (s: string) => Math.floor(new Date(`${s}T12:00:00`).getTime() / 1000);
 
-export function VariableEditor({ projectId, envId, secret, onSaved, onClose }: {
+export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onClose }: {
   projectId: string;
   envId: string;
   secret: Secret | null;
+  /** For a new variable: start with this key (overriding an inherited variable). */
+  prefill?: { key: string; isSecret: boolean };
   onSaved: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [key, setKey] = useState(secret?.key ?? "");
+  const [key, setKey] = useState(secret?.key ?? prefill?.key ?? "");
   const [value, setValue] = useState("");
   const [original, setOriginal] = useState("");
-  const [isSecret, setIsSecret] = useState(secret?.isSecret ?? true);
-  const [kindTouched, setKindTouched] = useState(false);
+  const [isSecret, setIsSecret] = useState(secret?.isSecret ?? prefill?.isSecret ?? true);
+  const [kindTouched, setKindTouched] = useState(!!prefill);
   const [show, setShow] = useState(false);
   const [expires, setExpires] = useState(secret?.expiresAt != null);
   const [expiry, setExpiry] = useState(toDateInput(secret?.expiresAt ?? Date.now() / 1000 + 90 * 86400));

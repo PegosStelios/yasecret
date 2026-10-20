@@ -27,6 +27,8 @@ enum Commands {
     Example(cmd::example::ExampleArgs),
     /// Check that every key in a .env.example is set; exit 0 ok, 1 missing, 2 error
     Check(cmd::check::CheckArgs),
+    /// Make an environment inherit another's variables (or stop, with --none)
+    Inherit(cmd::inherit::InheritArgs),
     /// Look for vault secrets in files or git history (names only); exit 0 clean, 1 found, 2 error
     Scan(cmd::scan::ScanArgs),
     /// Run a command with selected variables injected (values masked in its output)
@@ -69,6 +71,7 @@ async fn main() {
         Commands::Example(args) => cmd::example::run(args),
         Commands::Check(args) => exit_with(cmd::check::run(args)),
         Commands::Scan(args) => exit_with(cmd::scan::run(args)),
+        Commands::Inherit(args) => cmd::inherit::run(args),
         Commands::Run(args) => cmd::run::run(args),
         Commands::Share(args) => cmd::share::run(args).await,
         Commands::Join(args) => cmd::join::run(args).await,

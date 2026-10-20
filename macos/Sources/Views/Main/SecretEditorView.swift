@@ -4,6 +4,9 @@ struct EditorRequest: Identifiable {
     let id = UUID()
     /// nil means "add a new variable".
     let secret: FfiSecret?
+    /// For a new variable: start with this key (overriding an inherited variable).
+    var prefillKey: String? = nil
+    var prefillSecret = true
 }
 
 struct SecretEditorView: View {
@@ -115,6 +118,11 @@ struct SecretEditorView: View {
     }
 
     private func prefill() {
+        if existing == nil, let k = request.prefillKey {
+            key = k
+            isSecret = request.prefillSecret
+            kindTouched = true
+        }
         guard let s = existing else { return }
         key = s.key
         isSecret = s.isSecret

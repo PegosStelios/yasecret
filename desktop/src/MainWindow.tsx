@@ -3,8 +3,8 @@ import {
   Copy, Check, Eye, EyeOff, Folder, Users, Plus, UserPlus, Lock, KeyRound, Search, X,
   Download, Upload, History, Share2, Hammer, FlaskConical, ShieldCheck, Layers, Type, Trash2,
 } from "lucide-react";
-import { api, errorText, plural, relativeTime, Environment, Project, Secret, SyncStatus, Member } from "./api";
-import { Button, ColumnFooter, ColumnHeader, Confirm, ContextMenu, EmptyState, FooterButton, IconButton, MenuItem } from "./ui";
+import { api, errorText, plural, relativeTime, Environment, InheritedVar, Project, Secret, SyncStatus, Member } from "./api";
+import { Button, ColumnFooter, ColumnHeader, Confirm, ContextMenu, EmptyState, FooterButton, IconButton, MASK, MenuItem } from "./ui";
 import { ActivitySheet, CompareSheet, ExportSheet, HistorySheet, ImportSheet, NameSheet, NewProjectSheet, VariableEditor } from "./sheets";
 import { JoinSheet, ShareSheet, sharingSummary } from "./sharing";
 import { VaultSheet } from "./vault";
@@ -15,7 +15,7 @@ type Sheet =
   | { kind: "newEnv" }
   | { kind: "renameEnv"; env: Environment }
   | { kind: "cloneEnv"; env: Environment }
-  | { kind: "editor"; secret: Secret | null }
+  | { kind: "editor"; secret: Secret | null; prefill?: { key: string; isSecret: boolean } }
   | { kind: "import" }
   | { kind: "export" }
   | { kind: "history"; secret: Secret }
@@ -37,6 +37,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [envId, setEnvId] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<Secret[]>([]);
+  const [inherited, setInherited] = useState<InheritedVar[]>([]);
   const [plainValues, setPlainValues] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [selection, setSelection] = useState<Set<string>>(new Set());
@@ -91,12 +92,13 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
 
   const loadSecrets = useCallback(async (pid: string, eid: string) => {
     const stale = () => currentProject.current !== pid || currentEnv.current !== eid;
-    const list = await api.listSecrets(eid);
+    const [list, fromParents] = await Promise.all([api.listSecrets(eid), api.listInherited(eid)]);
     if (stale()) return;
     const plain: Record<string, string> = {};
     await Promise.all(list.filter((s) => !s.isSecret).map(async (s) => { plain[s.id] = await api.getValue(pid, s.id, false); }));
     if (stale()) return;
     setSecrets(list);
+    setInherited(fromParents);
     setPlainValues(plain);
     const stamps = new Map(list.filter((s) => s.isSecret).map((s) => [s.id, s.updatedAt]));
     setRevealed((r) => Object.fromEntries(Object.entries(r).filter(([id]) => stamps.get(id) !== undefined && stamps.get(id) === revealedAt.current[id])));
@@ -127,6 +129,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
   }, [projectId, run, loadEnvs, loadSharing]);
   useEffect(() => {
     setSecrets([]);
+    setInherited([]);
     setSearch("");
     setSelection(new Set());
     setRevealed({});
@@ -187,6 +190,10 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
     const q = search.trim().toLowerCase();
     return q ? secrets.filter((s) => s.key.toLowerCase().includes(q)) : secrets;
   }, [secrets, search]);
+  const visibleInherited = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? inherited.filter((v) => v.key.toLowerCase().includes(q)) : inherited;
+  }, [inherited, search]);
 
   // ── Variable actions ──────────────────────────────────────────────────────
   const toggleReveal = async (s: Secret) => {
@@ -391,6 +398,18 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                           ...(others.length && !readOnly ? (["divider"] as MenuItem[]) : []),
                           ...(readOnly
                             ? []
+                            : [
+                                ...others.map((o) => ({
+                                  label: `${e.inheritsFrom === o.id ? "✓ " : ""}Inherit from ${o.name}`,
+                                  onClick: async () => { await run(api.setEnvironmentParent(e.id, o.id)); await run(loadEnvs(project.id)); },
+                                })),
+                                ...(e.inheritsFrom
+                                  ? [{ label: "Stop inheriting", onClick: async () => { await run(api.setEnvironmentParent(e.id, null)); await run(loadEnvs(project.id)); } }]
+                                  : []),
+                                ...(others.length ? (["divider"] as MenuItem[]) : []),
+                              ]),
+                          ...(readOnly
+                            ? []
                             : ([
                                 { label: "Rename…", onClick: () => setSheet({ kind: "renameEnv", env: e }) },
                                 { label: "Clone…", onClick: () => setSheet({ kind: "cloneEnv", env: e }) },
@@ -415,7 +434,14 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                     className={`mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] ${e.id === envId ? "bg-accent text-white" : "hover:bg-raised/50"}`}
                   >
                     <EnvIcon name={e.name} active={e.id === envId} />
-                    <span className="flex-1 truncate">{e.name}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{e.name}</span>
+                      {e.inheritsFrom && envs.some((o) => o.id === e.inheritsFrom) && (
+                        <span className={`block truncate text-xs ${e.id === envId ? "text-white/80" : "text-muted"}`}>
+                          inherits {envs.find((o) => o.id === e.inheritsFrom)?.name}
+                        </span>
+                      )}
+                    </span>
                     <span className={`text-xs tabular-nums ${e.id === envId ? "text-white/80" : "text-muted"}`}>{e.secretCount}</span>
                   </button>
                 ))
@@ -467,7 +493,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
             </div>
             {banner && <div className="border-t border-line bg-ok/15 px-4 py-1.5">{banner}</div>}
             <div className="min-h-0 flex-1 overflow-auto border-t border-line">
-              {secrets.length === 0 ? (
+              {secrets.length === 0 && inherited.length === 0 ? (
                 <EmptyState icon={<KeyRound size={34} />} title={`No variables in ${env.name}`} text="Add variables one by one, or import an existing .env or JSON file.">
                   {!readOnly && (
                     <>
@@ -476,9 +502,11 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                     </>
                   )}
                 </EmptyState>
-              ) : filtered.length === 0 ? (
+              ) : filtered.length === 0 && visibleInherited.length === 0 ? (
                 <EmptyState icon={<Search size={30} />} title={`No results for “${search}”`} text="Check the spelling or try a different search." />
               ) : (
+                <>
+                {filtered.length > 0 && (
                 <table className="w-full table-fixed border-collapse">
                   <thead className="sticky top-0 bg-panel text-left text-[13px] font-medium">
                     <tr className="border-b border-line">
@@ -539,6 +567,40 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                     })}
                   </tbody>
                 </table>
+                )}
+                {visibleInherited.length > 0 && (
+                  <div className="border-t border-line">
+                    <div className="px-4 pt-2.5 pb-1 text-xs font-semibold text-muted">Inherited · {plural(inherited.length, "variable")}</div>
+                    {visibleInherited.map((v) => (
+                      <div key={v.key} className="flex items-center gap-2 px-4 py-1.5 text-muted">
+                        {v.isSecret ? <Lock size={13} className="shrink-0" /> : <Type size={13} className="shrink-0" />}
+                        <span className="truncate font-mono">{v.key}</span>
+                        <span className="shrink-0 rounded-full bg-raised px-1.5 py-px text-[11px]">from {v.fromEnv}</span>
+                        <span className="flex-1" />
+                        <span className="max-w-[40%] truncate font-mono">{v.isSecret ? (revealed[v.secretId] ?? MASK) : v.value}</span>
+                        {v.isSecret && (
+                          <IconButton
+                            title={revealed[v.secretId] !== undefined ? "Hide value" : "Reveal value"}
+                            onClick={async () => {
+                              if (revealed[v.secretId] !== undefined) {
+                                setRevealed(({ [v.secretId]: _, ...rest }) => rest);
+                                return;
+                              }
+                              const value = await run(api.getValue(project!.id, v.secretId, true));
+                              if (value !== undefined) setRevealed((r) => ({ ...r, [v.secretId]: value }));
+                            }}
+                          >
+                            {revealed[v.secretId] !== undefined ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </IconButton>
+                        )}
+                        {!readOnly && (
+                          <Button onClick={() => setSheet({ kind: "editor", secret: null, prefill: { key: v.key, isSecret: v.isSecret } })}>Override</Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                </>
               )}
             </div>
             <ColumnFooter>
@@ -607,6 +669,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
             projectId={project.id}
             envId={env.id}
             secret={sheet.secret}
+            prefill={sheet.prefill}
             onClose={close}
             onSaved={async () => { await run(loadSecrets(project.id, env.id)); await run(loadEnvs(project.id)); }}
           />

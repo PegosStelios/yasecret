@@ -38,3 +38,19 @@ fn run_injects_inherited_variables() {
         .unwrap();
     assert!(stdout(&out).contains("matched"), "{}{}", stdout(&out), String::from_utf8_lossy(&out.stderr));
 }
+
+#[test]
+fn inherit_sets_and_clears_the_parent() {
+    let v = Vault::new();
+    let db = v.db();
+    environment::create(&db, &v.project_id, "qa").unwrap();
+    drop(db);
+    let set = v.cmd(&["inherit", "-p", "shop", "-e", "qa", "--from", "dev"]);
+    assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+    assert!(stdout(&v.cmd(&["pull", "-p", "shop", "-e", "qa"])).contains("API_KEY=old-key"));
+    let loop_ = v.cmd(&["inherit", "-p", "shop", "-e", "dev", "--from", "qa"]);
+    assert!(!loop_.status.success(), "loops are refused");
+    let cleared = v.cmd(&["inherit", "-p", "shop", "-e", "qa", "--none"]);
+    assert!(cleared.status.success());
+    assert!(stdout(&v.cmd(&["pull", "-p", "shop", "-e", "qa"])).is_empty());
+}
