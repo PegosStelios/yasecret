@@ -60,6 +60,10 @@ export const api = {
   createEnvironment: (projectId: string, name: string) => invoke<Environment>("create_environment", { projectId, name }),
   renameEnvironment: (envId: string, name: string) => invoke<void>("rename_environment", { envId, name }),
   setValueType: (projectId: string, secretId: string, valueType: string | null) => invoke<void>("set_value_type", { projectId, secretId, valueType }),
+  rotationProvider: (key: string, value: string) => invoke<{ name: string; dashboard: string; steps: string } | null>("rotation_provider", { key, value }),
+  generateSecretValue: (length: number, charset: "urlsafe" | "alnum" | "hex") => invoke<string>("generate_secret_value", { length, charset }),
+  /** Opens the dashboard of the provider this key belongs to. */
+  openDashboard: (key: string, value: string) => invoke<void>("open_dashboard", { key, value }),
   suggestValueType: (key: string) => invoke<string | null>("suggest_value_type", { key }),
   /** Why `value` doesn't fit `valueType`, or null. */
   valueTypeProblem: (valueType: string, value: string) => invoke<string | null>("value_type_problem", { valueType, value }),

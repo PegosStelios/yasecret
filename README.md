@@ -45,6 +45,12 @@ Tagged versions are published on the [Releases](../../releases) page: a Windows 
 
 Give a variable a type (URL, number, port, boolean, email or JSON) in its editor; Yasecret suggests one from the name (`*_URL`, `*_PORT`, `ENABLE_*`…). Every change is checked against it: in the apps, on `yasecret push` (a push with a value that doesn't fit is refused as a whole) and on MCP imports. Types sync with the variable.
 
+## Rotating secrets
+
+- **Generated values** (session secrets, JWT keys, internal passwords): *Generate* in the variable editor, or `yasecret rotate -p app -e prod JWT_SECRET --generate` (`--length`, `--charset urlsafe|alnum|hex`).
+- **AWS access keys**, fully automatic: `yasecret rotate -p app -e prod --aws` creates a new key for the same IAM user, checks it works, stores both halves, then deletes the old key (`--keep-old` to keep it).
+- **Stripe, GitHub, OpenAI, Anthropic, Slack, SendGrid** keys can't be rolled through a public API. Yasecret recognises them and links to the right dashboard page (in the editor, or `yasecret rotate … KEY`), then takes the new value. The old one stays in the variable's history.
+
 ## Inheritance and references
 
 An environment can **inherit** another's variables (right-click it → *Inherit From*, or `yasecret inherit -p app -e staging --from development`). Its own variables win, so staging only needs the values that differ. Inherited variables show under the environment's own, with *Override* to give it its own value.

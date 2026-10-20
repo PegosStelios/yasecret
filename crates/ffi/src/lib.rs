@@ -987,6 +987,34 @@ pub fn vault_has_recovery_key(db_path: String) -> bool {
     yasecret_core::vault::has_recovery_key(Path::new(&db_path))
 }
 
+/// Where to roll a provider's key by hand.
+#[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct FfiProvider {
+    pub name: String,
+    pub dashboard: String,
+    pub steps: String,
+}
+
+/// The service a key belongs to (Stripe, GitHub, AWS…), recognised from its value or name.
+#[uniffi::export]
+pub fn rotation_provider(key: String, value: String) -> Option<FfiProvider> {
+    yasecret_core::rotate::provider(&key, &value).map(|p| FfiProvider { name: p.name.into(), dashboard: p.dashboard, steps: p.steps.into() })
+}
+
+/// A random value: `charset` is "urlsafe", "alnum" or "hex".
+#[uniffi::export]
+pub fn generate_secret_value(length: u32, charset: String) -> String {
+    use yasecret_core::rotate::Charset;
+    let c = match charset.as_str() {
+        "hex" => Charset::Hex,
+        "alnum" => Charset::Alphanumeric,
+        _ => Charset::UrlSafe,
+    };
+    yasecret_core::rotate::generate(length.clamp(8, 256) as usize, c)
+}
+
 /// A likely type for a variable name ("url", "port", …), or none.
 #[uniffi::export]
 pub fn suggest_value_type(key: String) -> Option<String> {

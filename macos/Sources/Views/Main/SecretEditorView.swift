@@ -37,6 +37,12 @@ struct SecretEditorView: View {
         ("boolean", "Boolean"), ("email", "Email"), ("json", "JSON"),
     ]
 
+    /// For an existing provider key (Stripe, GitHub…): where to roll it.
+    private var rotationHint: FfiProvider? {
+        guard existing != nil, !originalValue.isEmpty else { return nil }
+        return rotationProvider(key: key, value: originalValue)
+    }
+
     /// Why the value doesn't fit the chosen type, if it doesn't.
     private var typeProblem: String? {
         valueType.flatMap { valueTypeProblem(valueType: $0, value: value) }
@@ -69,6 +75,15 @@ struct SecretEditorView: View {
                     Text("Value").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if isSecret {
+                        Button("Generate") {
+                            value = generateSecretValue(length: 48, charset: valueType == "number" ? "hex" : "urlsafe")
+                            showValue = true
+                        }
+                        .buttonStyle(.link)
+                        .font(.caption)
+                        .help("Replace with a new random value (48 characters)")
+                    }
+                    if isSecret {
                         Button(showValue ? "Hide" : "Show") { showValue.toggle() }
                             .buttonStyle(.link)
                             .font(.caption)
@@ -86,6 +101,14 @@ struct SecretEditorView: View {
                         .frame(minHeight: 56, maxHeight: 140)
                         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
+                }
+                if let p = rotationHint {
+                    HStack(spacing: 4) {
+                        Text("A \(p.name) key — roll it in the dashboard, then paste the new value:")
+                        Link("Open \(p.name) ↗", destination: URL(string: p.dashboard)!)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 if let typeProblem {
                     Text("This value isn't valid: \(typeProblem)").font(.caption).foregroundStyle(.red)

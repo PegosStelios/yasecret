@@ -517,6 +517,11 @@ RustBuffer uniffi_yasecret_ffi_fn_func_default_db_path(RustCallStatus *_Nonnull 
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_GENERATE_SECRET_VALUE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_GENERATE_SECRET_VALUE
+RustBuffer uniffi_yasecret_ffi_fn_func_generate_secret_value(uint32_t length, RustBuffer charset, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_IS_VALID_KEY
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_IS_VALID_KEY
 int8_t uniffi_yasecret_ffi_fn_func_is_valid_key(RustBuffer key, RustCallStatus *_Nonnull out_status
@@ -535,6 +540,11 @@ void uniffi_yasecret_ffi_fn_func_recover_vault(RustBuffer db_path, RustBuffer re
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
 void uniffi_yasecret_ffi_fn_func_restore_vault_backup(RustBuffer backup_path, RustBuffer db_path, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_ROTATION_PROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_ROTATION_PROVIDER
+RustBuffer uniffi_yasecret_ffi_fn_func_rotation_provider(RustBuffer key, RustBuffer value, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_SUGGEST_VALUE_TYPE
@@ -844,6 +854,12 @@ uint16_t uniffi_yasecret_ffi_checksum_func_default_db_path(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_GENERATE_SECRET_VALUE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_GENERATE_SECRET_VALUE
+uint16_t uniffi_yasecret_ffi_checksum_func_generate_secret_value(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_IS_VALID_KEY
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_IS_VALID_KEY
 uint16_t uniffi_yasecret_ffi_checksum_func_is_valid_key(void
@@ -865,6 +881,12 @@ uint16_t uniffi_yasecret_ffi_checksum_func_recover_vault(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RESTORE_VAULT_BACKUP
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_RESTORE_VAULT_BACKUP
 uint16_t uniffi_yasecret_ffi_checksum_func_restore_vault_backup(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_ROTATION_PROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_ROTATION_PROVIDER
+uint16_t uniffi_yasecret_ffi_checksum_func_rotation_provider(void
     
 );
 #endif

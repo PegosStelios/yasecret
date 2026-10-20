@@ -34,6 +34,8 @@ enum Commands {
     Check(cmd::check::CheckArgs),
     /// Make an environment inherit another's variables (or stop, with --none)
     Inherit(cmd::inherit::InheritArgs),
+    /// Replace a secret: a generated value, a guided provider rotation, or an AWS key pair (--aws)
+    Rotate(cmd::rotate::RotateArgs),
     /// Look for vault secrets in files or git history (names only); exit 0 clean, 1 found, 2 error
     Scan(cmd::scan::ScanArgs),
     /// Run a command with selected variables injected (values masked in its output)
@@ -84,6 +86,10 @@ async fn main() {
         Commands::Check(args) => exit_with(cmd::check::run(args)),
         Commands::Scan(args) => exit_with(cmd::scan::run(args)),
         Commands::Inherit(args) => cmd::inherit::run(args),
+        // Blocking HTTP (AWS) can't run on the async runtime's threads.
+        Commands::Rotate(args) => tokio::task::spawn_blocking(move || cmd::rotate::run(args))
+            .await
+            .unwrap_or_else(|e| Err(yasecret_core::YasecretError::Io(std::io::Error::other(e.to_string())))),
         Commands::Run(args) => cmd::run::run(args),
         Commands::Share(args) => cmd::share::run(args).await,
         Commands::Join(args) => cmd::join::run(args).await,

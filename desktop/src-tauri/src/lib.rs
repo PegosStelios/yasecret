@@ -446,6 +446,29 @@ async fn set_value_type(vault: State<'_, Vault>, project_id: String, secret_id: 
 }
 
 #[tauri::command]
+fn rotation_provider(key: String, value: String) -> Option<yasecret_ffi::FfiProvider> {
+    yasecret_ffi::rotation_provider(key, value)
+}
+
+#[tauri::command]
+fn generate_secret_value(length: u32, charset: String) -> String {
+    yasecret_ffi::generate_secret_value(length, charset)
+}
+
+/// Opens a provider's dashboard in the browser (only the known dashboards).
+#[tauri::command]
+fn open_dashboard(key: String, value: String) -> CmdResult<()> {
+    let p = yasecret_ffi::rotation_provider(key, value).ok_or_else(|| "Not a recognised provider key".to_string())?;
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &p.dashboard]).spawn();
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg(&p.dashboard).spawn();
+    #[cfg(target_os = "linux")]
+    let r = std::process::Command::new("xdg-open").arg(&p.dashboard).spawn();
+    r.map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn suggest_value_type(key: String) -> Option<String> {
     yasecret_ffi::suggest_value_type(key)
 }
@@ -741,6 +764,9 @@ pub fn run() {
             rename_environment,
             set_value_type,
             suggest_value_type,
+            rotation_provider,
+            generate_secret_value,
+            open_dashboard,
             value_type_problem,
             set_environment_parent,
             list_inherited,

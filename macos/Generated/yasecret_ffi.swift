@@ -2076,6 +2076,83 @@ public func FfiConverterTypeFfiProject_lower(_ value: FfiProject) -> RustBuffer 
 }
 
 
+/**
+ * Where to roll a provider's key by hand.
+ */
+public struct FfiProvider {
+    public var name: String
+    public var dashboard: String
+    public var steps: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, dashboard: String, steps: String) {
+        self.name = name
+        self.dashboard = dashboard
+        self.steps = steps
+    }
+}
+
+
+
+extension FfiProvider: Equatable, Hashable {
+    public static func ==(lhs: FfiProvider, rhs: FfiProvider) -> Bool {
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.dashboard != rhs.dashboard {
+            return false
+        }
+        if lhs.steps != rhs.steps {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(name)
+        hasher.combine(dashboard)
+        hasher.combine(steps)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiProvider: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiProvider {
+        return
+            try FfiProvider(
+                name: FfiConverterString.read(from: &buf), 
+                dashboard: FfiConverterString.read(from: &buf), 
+                steps: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiProvider, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.dashboard, into: &buf)
+        FfiConverterString.write(value.steps, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiProvider_lift(_ buf: RustBuffer) throws -> FfiProvider {
+    return try FfiConverterTypeFfiProvider.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiProvider_lower(_ value: FfiProvider) -> RustBuffer {
+    return FfiConverterTypeFfiProvider.lower(value)
+}
+
+
 public struct FfiRelay {
     public var code: String
     public var name: String
@@ -2665,6 +2742,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiProvider: FfiConverterRustBuffer {
+    typealias SwiftType = FfiProvider?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiProvider.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiProvider.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]?
 
@@ -3002,6 +3103,17 @@ public func defaultDbPath() -> String {
     )
 })
 }
+/**
+ * A random value: `charset` is "urlsafe", "alnum" or "hex".
+ */
+public func generateSecretValue(length: UInt32, charset: String) -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_generate_secret_value(
+        FfiConverterUInt32.lower(length),
+        FfiConverterString.lower(charset),$0
+    )
+})
+}
 public func isValidKey(key: String) -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_yasecret_ffi_fn_func_is_valid_key(
@@ -3038,6 +3150,17 @@ public func restoreVaultBackup(backupPath: String, dbPath: String, password: Str
         FfiConverterString.lower(password),$0
     )
 }
+}
+/**
+ * The service a key belongs to (Stripe, GitHub, AWS…), recognised from its value or name.
+ */
+public func rotationProvider(key: String, value: String) -> FfiProvider? {
+    return try!  FfiConverterOptionTypeFfiProvider.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_rotation_provider(
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),$0
+    )
+})
 }
 /**
  * A likely type for a variable name ("url", "port", …), or none.
@@ -3089,6 +3212,9 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_func_default_db_path() != 45430) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_yasecret_ffi_checksum_func_generate_secret_value() != 34185) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_yasecret_ffi_checksum_func_is_valid_key() != 14740) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3099,6 +3225,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_func_restore_vault_backup() != 16779) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_rotation_provider() != 53078) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_func_suggest_value_type() != 52395) {

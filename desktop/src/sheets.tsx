@@ -108,6 +108,7 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
   const [valueType, setValueType] = useState<string | null>(secret?.valueType ?? null);
   const [typeTouched, setTypeTouched] = useState(false);
   const [typeProblem, setTypeProblem] = useState<string | null>(null);
+  const [provider, setProvider] = useState<{ name: string; steps: string } | null>(null);
   const [show, setShow] = useState(false);
   const [expires, setExpires] = useState(secret?.expiresAt != null);
   const [expiry, setExpiry] = useState(toDateInput(secret?.expiresAt ?? Date.now() / 1000 + 90 * 86400));
@@ -115,7 +116,15 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (secret) api.getValue(projectId, secret.id, false).then((v) => { setValue(v); setOriginal(v); }).catch((e) => setError(errorText(e)));
+    if (secret) {
+      api.getValue(projectId, secret.id, false)
+        .then((v) => {
+          setValue(v);
+          setOriginal(v);
+          api.rotationProvider(secret.key, v).then(setProvider).catch(() => {});
+        })
+        .catch((e) => setError(errorText(e)));
+    }
   }, [secret, projectId]);
   useEffect(() => {
     if (!key) { setValidKey(true); return; }
@@ -183,7 +192,17 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
       <div className="mt-4 mb-1 flex items-center justify-between">
         <label className="text-xs text-muted">Value</label>
         {isSecret && (
-          <button type="button" className="text-xs text-accent" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
+          <span className="flex gap-3">
+            <button
+              type="button"
+              className="text-xs text-accent"
+              title="Replace with a new random value (48 characters)"
+              onClick={async () => { setValue(await api.generateSecretValue(48, "urlsafe")); setShow(true); }}
+            >
+              Generate
+            </button>
+            <button type="button" className="text-xs text-accent" onClick={() => setShow(!show)}>{show ? "Hide" : "Show"}</button>
+          </span>
         )}
       </div>
       {masked ? (
@@ -197,6 +216,14 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
         />
       )}
 
+      {provider && secret && (
+        <p className="mt-1 text-xs text-muted">
+          A {provider.name} key — roll it in the dashboard, then paste the new value.{" "}
+          <button type="button" className="text-accent hover:underline" onClick={() => api.openDashboard(secret.key, original).catch(() => {})}>
+            Open {provider.name} ↗
+          </button>
+        </p>
+      )}
       {typeProblem && <p className="mt-1 text-xs text-danger">This value isn't valid: {typeProblem}</p>}
 
       <div className="mt-4 space-y-3">

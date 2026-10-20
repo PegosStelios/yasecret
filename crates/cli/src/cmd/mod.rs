@@ -10,6 +10,7 @@ pub mod peers;
 pub mod pull;
 pub mod push;
 pub mod relay;
+pub mod rotate;
 pub mod run;
 pub mod scan;
 pub mod share;

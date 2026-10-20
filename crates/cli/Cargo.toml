@@ -20,6 +20,7 @@ yasecret-core = { path = "../core" }
 
 [dependencies]
 serde_json    = { workspace = true }
+reqwest       = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 yasecret-core = { path = "../core" }
 yasecret-sync = { path = "../sync" }
 clap          = { workspace = true }
