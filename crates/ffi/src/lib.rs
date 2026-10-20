@@ -183,6 +183,8 @@ pub struct FfiMember {
     pub level: String,
     pub joined_at: i64,
     pub is_me: bool,
+    /// The owner who shared the project; other members at level "owner" are co-owners.
+    pub is_root: bool,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -190,7 +192,10 @@ pub struct FfiMember {
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
 pub struct FfiSyncStatus {
     pub shared: bool,
+    /// Owner or co-owner: can invite people and change access.
     pub is_owner: bool,
+    /// The owner who shared the project: can appoint co-owners and stop sharing.
+    pub is_root: bool,
     pub my_level: String,
     pub peers_online: u32,
     pub last_synced_at: Option<i64>,
@@ -768,7 +773,7 @@ impl YasecretSession {
         Ok(svc
             .members(&project_id)?
             .into_iter()
-            .map(|m| FfiMember { peer_id: m.peer_id, name: m.name, level: m.level, joined_at: m.joined_at, is_me: m.is_me })
+            .map(|m| FfiMember { peer_id: m.peer_id, name: m.name, level: m.level, joined_at: m.joined_at, is_me: m.is_me, is_root: m.is_root })
             .collect())
     }
 
@@ -790,7 +795,7 @@ impl YasecretSession {
             .collect())
     }
 
-    /// `level` is "editor", "viewer" or "removed".
+    /// `level` is "owner" (make a co-owner; root owner only), "editor", "viewer" or "removed".
     pub fn set_member_level(&self, project_id: String, peer_id: String, level: String) -> Result<(), FfiError> {
         Ok(self.require_sync()?.set_member_level(&project_id, &peer_id, &level)?)
     }
@@ -809,6 +814,7 @@ impl YasecretSession {
         Ok(FfiSyncStatus {
             shared: st.shared,
             is_owner: st.is_owner,
+            is_root: st.is_root,
             my_level: st.my_level,
             peers_online: st.peers_online,
             last_synced_at: st.last_synced_at,

@@ -153,6 +153,10 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
   const [pendingRemoval, setPendingRemoval] = useState<Member | null>(null);
   const shared = status?.shared ?? false;
   const isOwner = !shared || (status?.isOwner ?? false);
+  const isRoot = !shared || (status?.isRoot ?? false);
+  // Co-owners manage everyone except owners; only the root owner manages co-owners.
+  const canManage = (m: Member) => isOwner && !m.isMe && !m.isRoot && m.level !== "pending" && (m.level !== "owner" || isRoot);
+  const accessLabel = (m: Member) => (m.level === "owner" ? (m.isRoot ? "Owner" : "Co-owner") : levelLabel(m.level));
   const cleaned = code.replace(/\s+/g, "");
 
   useEffect(() => {
@@ -190,7 +194,7 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
       onEnter={isOwner && !link ? create : onClose}
       footer={
         <>
-          {shared && <Button variant="danger" className="mr-auto" onClick={() => setConfirmStop(true)}>{isOwner ? "Stop Sharing…" : "Leave Project…"}</Button>}
+          {shared && <Button variant="danger" className="mr-auto" onClick={() => setConfirmStop(true)}>{isRoot ? "Stop Sharing…" : "Leave Project…"}</Button>}
           <Button variant="primary" onClick={onClose}>Done</Button>
         </>
       }
@@ -234,24 +238,28 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
                 <div className="truncate">{m.name}{m.isMe ? " (this computer)" : ""}</div>
                 <div className="text-xs text-muted">Joined {relativeTime(m.joinedAt)}</div>
               </div>
-              {isOwner && !m.isMe && m.level !== "owner" && m.level !== "pending" ? (
+              {canManage(m) ? (
                 <select
                   value={m.level}
                   aria-label={`Access for ${m.name}`}
                   onChange={(e) => (e.target.value === "removed" ? setPendingRemoval(m) : setLevel(m, e.target.value))}
                   className="h-7 rounded-md border border-line bg-field px-2"
                 >
+                  {isRoot && <option value="owner">Co-owner</option>}
                   <option value="editor">Can edit</option>
                   <option value="viewer">Can view</option>
                   <option value="removed">Remove…</option>
                 </select>
               ) : (
-                <span className="text-muted">{levelLabel(m.level)}</span>
+                <span className="text-muted">{accessLabel(m)}</span>
               )}
             </div>
           ))}
           {isOwner && members.length > 1 && (
-            <p className="mt-2 text-xs text-muted">Removing someone replaces the project key, so they can't read anything written afterwards.</p>
+            <p className="mt-2 text-xs text-muted">
+              Removing someone replaces the project key, so they can't read anything written afterwards.
+              {isRoot && " Co-owners can invite people and change access while you're away."}
+            </p>
           )}
         </div>
       )}
@@ -268,11 +276,11 @@ export function ShareSheet({ project, status, members, onRefresh, onStopped, onC
       )}
       {confirmStop && (
         <Confirm
-          title={isOwner ? `Stop sharing “${project.name}”?` : `Leave “${project.name}”?`}
-          message={isOwner
+          title={isRoot ? `Stop sharing “${project.name}”?` : `Leave “${project.name}”?`}
+          message={isRoot
             ? "Everyone loses access to future changes. The project key is replaced, so old invites and copies can't read new values. You keep all your data."
             : "The project and its variables are removed from this computer. You'll need a new invite to rejoin."}
-          action={isOwner ? "Stop Sharing" : "Leave and Remove"}
+          action={isRoot ? "Stop Sharing" : "Leave and Remove"}
           onClose={() => setConfirmStop(false)}
           onConfirm={async () => {
             try {

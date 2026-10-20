@@ -63,7 +63,7 @@ struct ShareSheet: View {
 
             HStack {
                 if sharing.isShared {
-                    Button(sharing.isOwner ? "Stop Sharing…" : "Leave Project…", role: .destructive) {
+                    Button(sharing.isRoot ? "Stop Sharing…" : "Leave Project…", role: .destructive) {
                         confirmStop = true
                     }
                 }
@@ -109,13 +109,13 @@ struct ShareSheet: View {
             Text("The project key is replaced and handed to everyone else, so they can't read anything changed afterwards.")
         }
         .confirmationDialog(
-            sharing.isOwner ? "Stop sharing “\(projectName)”?" : "Leave “\(projectName)”?",
+            sharing.isRoot ? "Stop sharing “\(projectName)”?" : "Leave “\(projectName)”?",
             isPresented: $confirmStop,
             titleVisibility: .visible
         ) {
-            Button(sharing.isOwner ? "Stop Sharing" : "Leave and Remove", role: .destructive, action: stop)
+            Button(sharing.isRoot ? "Stop Sharing" : "Leave and Remove", role: .destructive, action: stop)
         } message: {
-            Text(sharing.isOwner
+            Text(sharing.isRoot
                  ? "Everyone loses access to future changes. The project key is replaced, so old invites and copies can't read new values. You keep all your data."
                  : "The project and its variables are removed from this Mac. You'll need a new invite to rejoin.")
         }
@@ -215,8 +215,11 @@ struct ShareSheet: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    if sharing.isOwner && !m.isMe && m.level != "owner" && m.level != "pending" {
-                        Menu(levelLabel(m.level)) {
+                    if sharing.canManage(m) {
+                        Menu(sharing.accessLabel(m)) {
+                            if sharing.isRoot {
+                                Button("Co-owner") { setLevel(m, "owner") }
+                            }
                             Button("Can edit") { setLevel(m, "editor") }
                             Button("Can view") { setLevel(m, "viewer") }
                             Divider()
@@ -224,12 +227,12 @@ struct ShareSheet: View {
                         }
                         .fixedSize()
                     } else {
-                        Text(levelLabel(m.level)).foregroundStyle(.secondary)
+                        Text(sharing.accessLabel(m)).foregroundStyle(.secondary)
                     }
                 }
             }
             if sharing.isOwner && sharing.members.count > 1 {
-                Text("Removing someone replaces the project key, so they can't read anything changed afterwards.")
+                Text("Removing someone replaces the project key, so they can't read anything changed afterwards." + (sharing.isRoot ? " Co-owners can invite people and change access while you're away." : ""))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

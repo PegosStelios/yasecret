@@ -8,7 +8,19 @@ final class SharingViewModel {
     var relays: [FfiRelay] = []
 
     var isShared: Bool { status?.shared == true }
+    /// Owner or co-owner: can invite people and change access.
     var isOwner: Bool { !isShared || status?.isOwner == true }
+    /// The owner who shared the project: can appoint co-owners and stop sharing.
+    var isRoot: Bool { !isShared || status?.isRoot == true }
+
+    /// Co-owners manage everyone except owners; only the root owner manages co-owners.
+    func canManage(_ m: FfiMember) -> Bool {
+        isOwner && !m.isMe && !m.isRoot && m.level != "pending" && (m.level != "owner" || isRoot)
+    }
+
+    func accessLabel(_ m: FfiMember) -> String {
+        m.level == "owner" ? (m.isRoot ? "Owner" : "Co-owner") : levelLabel(m.level)
+    }
     /// Anyone who isn't an owner or editor can't change shared data: their edits would never sync.
     var isReadOnly: Bool { isShared && !["owner", "editor"].contains(status?.myLevel ?? "") }
 

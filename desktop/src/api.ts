@@ -16,11 +16,12 @@ export type DiffRow = {
   leftIsSecret: boolean;
   rightIsSecret: boolean;
 };
-export type Member = { peerId: string; name: string; level: string; joinedAt: number; isMe: boolean };
+export type Member = { peerId: string; name: string; level: string; joinedAt: number; isMe: boolean; isRoot: boolean };
 export type Relay = { code: string; name: string; addedAt: number; online: boolean };
 export type SyncStatus = {
   shared: boolean;
   isOwner: boolean;
+  isRoot: boolean;
   myLevel: string;
   peersOnline: number;
   lastSyncedAt: number | null;

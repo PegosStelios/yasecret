@@ -88,6 +88,9 @@ pub struct WMember {
     /// HMAC proving the joiner holds the project key; see `join_proof`.
     #[serde(default)]
     pub proof: Vec<u8>,
+    /// The device's signing key, needed to make it a co-owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_pub: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -105,6 +108,12 @@ pub struct WGrant {
     pub level: String,
     pub granted_at: i64,
     pub signature: Vec<u8>,
+    /// Signing key of the co-owner who signed this grant; absent when the root owner did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_by: Option<String>,
+    /// For a co-owner: the signing key they sign grants with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_pub: Option<String>,
 }
 
 /// An always-on peer the owner added; members dial it so the project stays reachable.
@@ -115,22 +124,37 @@ pub struct WRelay {
     pub added_at: i64,
     pub removed: bool,
     pub signature: Vec<u8>,
+    /// Signing key of the co-owner who added it; absent when the root owner did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signed_by: Option<String>,
 }
 
-fn relay_msg(project_id: &str, code: &str, name: &str, added_at: i64, removed: bool) -> String {
-    format!("yasecret-relay-v1|{project_id}|{code}|{name}|{added_at}|{removed}")
+fn relay_msg(project_id: &str, code: &str, name: &str, added_at: i64, removed: bool, signed_by: Option<&str>) -> String {
+    let base = format!("yasecret-relay-v1|{project_id}|{code}|{name}|{added_at}|{removed}");
+    match signed_by {
+        Some(k) => format!("{base}|{k}"),
+        None => base,
+    }
 }
 
-/// Latest owner-signed relay record per relay, excluding removed ones.
+/// Latest relay record per relay signed by the root owner or a co-owner, excluding removed ones.
 fn valid_relays(project_id: &str, entries: &[RawEntry], owner: &[u8; 32]) -> Vec<WRelay> {
+    let co_owner_keys: Vec<[u8; 32]> = grants_and_co_owners(project_id, entries, owner).1.into_values().collect();
     let mut latest_by_code: HashMap<String, WRelay> = HashMap::new();
     for e in entries.iter().filter(|e| e.key.starts_with("v2/relay/")) {
         let Ok(r) = serde_json::from_slice::<WRelay>(&e.content) else { continue };
         if e.key != keys::relay(&r.code) {
             continue;
         }
-        let msg = relay_msg(project_id, &r.code, &r.name, r.added_at, r.removed);
-        if crypto::verify(msg.as_bytes(), &r.signature, owner).is_err() {
+        let signer = match r.signed_by.as_deref() {
+            None => *owner,
+            Some(k) => match hex32(k).filter(|k| co_owner_keys.contains(k)) {
+                Some(k) => k,
+                None => continue,
+            },
+        };
+        let msg = relay_msg(project_id, &r.code, &r.name, r.added_at, r.removed, r.signed_by.as_deref());
+        if crypto::verify(msg.as_bytes(), &r.signature, &signer).is_err() {
             continue;
         }
         match latest_by_code.get(&r.code) {
@@ -231,20 +255,122 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
-fn sign_grant(signer: &Identity, project_id: &str, peer: &str, author: &str, level: &str) -> WGrant {
-    let granted_at = now();
-    let msg = grant_msg(project_id, peer, author, level, granted_at);
-    WGrant {
+fn sign_grant(
+    signer: &Identity,
+    project_id: &str,
+    peer: &str,
+    author: &str,
+    level: &str,
+    signed_by: Option<String>,
+    sign_pub: Option<String>,
+) -> WGrant {
+    let mut g = WGrant {
         peer_id: peer.to_string(),
         author: author.to_string(),
         level: level.to_string(),
-        granted_at,
-        signature: crypto::sign(msg.as_bytes(), &signer.signing_key()),
+        granted_at: now(),
+        signature: vec![],
+        signed_by,
+        sign_pub,
+    };
+    g.signature = crypto::sign(grant_msg(project_id, &g).as_bytes(), &signer.signing_key());
+    g
+}
+
+fn grant_msg(project_id: &str, g: &WGrant) -> String {
+    let base = format!("yasecret-grant-v2|{project_id}|{}|{}|{}|{}", g.peer_id, g.author, g.level, g.granted_at);
+    if g.signed_by.is_none() && g.sign_pub.is_none() {
+        // Grants from before co-owners existed.
+        base
+    } else {
+        format!("{base}|{}|{}", g.signed_by.as_deref().unwrap_or(""), g.sign_pub.as_deref().unwrap_or(""))
     }
 }
 
-fn grant_msg(project_id: &str, peer_id: &str, author: &str, level: &str, granted_at: i64) -> String {
-    format!("yasecret-grant-v2|{project_id}|{peer_id}|{author}|{level}|{granted_at}")
+fn hex32(s: &str) -> Option<[u8; 32]> {
+    hex::decode(s).ok().and_then(|b| b.try_into().ok())
+}
+
+/// Later grants win; at the same time, removal wins.
+fn keep_latest(out: &mut HashMap<String, WGrant>, g: WGrant) {
+    let rank = |l: &str| if l == LEVEL_REMOVED { 1 } else { 0 };
+    match out.get(&g.peer_id) {
+        Some(prev) if (prev.granted_at, rank(&prev.level)) >= (g.granted_at, rank(&g.level)) => {}
+        _ => {
+            out.insert(g.peer_id.clone(), g);
+        }
+    }
+}
+
+/// Valid grants, latest per peer, and the current co-owners (peer → signing key).
+///
+/// The root owner (pinned from the invite link) appoints and removes co-owners: only
+/// root-signed grants decide who owns. Co-owners sign grants for everyone else. A grant
+/// counts only while its signer is the root or a current co-owner, so grants a demoted
+/// co-owner signs (whatever date they put on them) are ignored; when demoting, the root
+/// re-signs the grants that co-owner issued.
+fn grants_and_co_owners(project_id: &str, entries: &[RawEntry], root: &[u8; 32]) -> (HashMap<String, WGrant>, HashMap<String, [u8; 32]>) {
+    let parsed: Vec<WGrant> = entries
+        .iter()
+        .filter(|e| e.key.starts_with("v2/grant/"))
+        .filter_map(|e| serde_json::from_slice::<WGrant>(&e.content).ok().filter(|g| e.key == keys::grant(&g.peer_id)))
+        .collect();
+    let verifies = |g: &WGrant, key: &[u8; 32]| crypto::verify(grant_msg(project_id, g).as_bytes(), &g.signature, key).is_ok();
+
+    let mut by_root: HashMap<String, WGrant> = HashMap::new();
+    for g in parsed.iter().filter(|g| g.signed_by.is_none() && verifies(g, root)) {
+        keep_latest(&mut by_root, g.clone());
+    }
+    let co_owners: HashMap<String, [u8; 32]> = by_root
+        .values()
+        .filter(|g| g.level == LEVEL_OWNER)
+        .filter_map(|g| Some((g.peer_id.clone(), hex32(g.sign_pub.as_deref()?)?)))
+        .filter(|(_, k)| k != root)
+        .collect();
+    let owners: HashSet<&String> = by_root.values().filter(|g| g.level == LEVEL_OWNER).map(|g| &g.peer_id).collect();
+
+    let mut out = by_root.clone();
+    for g in parsed.iter().filter(|g| g.signed_by.is_some()) {
+        let Some(key) = g.signed_by.as_deref().and_then(hex32) else { continue };
+        if !co_owners.values().any(|k| *k == key) || !verifies(g, &key) {
+            continue;
+        }
+        if g.level == LEVEL_OWNER || g.sign_pub.is_some() || owners.contains(&g.peer_id) {
+            continue;
+        }
+        keep_latest(&mut out, g.clone());
+    }
+    (out, co_owners)
+}
+
+// ── Key handoffs ──────────────────────────────────────────────────────────────
+
+/// The project key for one device, with when it was rotated, so every device picks the same
+/// key when two owners rotate at once.
+fn handoff_blob(key: &[u8; 32], rotated_at: i64, peer_x25519: &[u8; 32]) -> Result<Vec<u8>> {
+    let mut plain = key.to_vec();
+    plain.extend_from_slice(&rotated_at.to_be_bytes());
+    Ok(crypto::encrypt_for_peer(&plain, peer_x25519)?)
+}
+
+/// The key from the newest rotation among owner handoffs addressed to `my_peer`.
+/// Handoffs from before rotation times were recorded read as rotated at 0.
+fn chosen_handoff(entries: &[RawEntry], my_peer: &str, owner_authors: &HashSet<String>, secret: &x25519_dalek::StaticSecret) -> Option<[u8; 32]> {
+    let key = keys::peer_key(my_peer);
+    entries
+        .iter()
+        .filter(|e| e.key == key && owner_authors.contains(&e.author))
+        .filter_map(|e| {
+            let plain = crypto::decrypt_from_peer(&e.content, secret).ok()?;
+            let k: [u8; 32] = plain.get(..32)?.try_into().ok()?;
+            let at = match plain.get(32..40) {
+                Some(b) => i64::from_be_bytes(b.try_into().ok()?),
+                None => 0,
+            };
+            Some(((at, e.author.clone()), k))
+        })
+        .max_by(|a, b| a.0.cmp(&b.0))
+        .map(|(_, k)| k)
 }
 
 // ── Invite links ──────────────────────────────────────────────────────────────
@@ -404,6 +530,8 @@ pub struct Member {
     pub level: String,
     pub joined_at: i64,
     pub is_me: bool,
+    /// The owner who shared the project (as opposed to a co-owner).
+    pub is_root: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -417,7 +545,10 @@ pub struct RelayPeer {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SyncStatus {
     pub shared: bool,
+    /// Owner or co-owner: can invite people and change access.
     pub is_owner: bool,
+    /// The owner who shared the project: can appoint co-owners and stop sharing.
+    pub is_root: bool,
     pub my_level: String,
     pub peers_online: u32,
     pub last_synced_at: Option<i64>,
@@ -431,6 +562,7 @@ struct LiveState {
     last_error: Option<String>,
     // Refreshed on every sync pass so status and member lists never block the UI.
     is_owner: Option<bool>,
+    is_root: Option<bool>,
     my_level: Option<String>,
     members: Option<Vec<Member>>,
     relays: Option<Vec<WRelay>>,
@@ -587,9 +719,7 @@ impl SyncService {
         let watch_id = project_id.clone();
         let url = self.rt.block_on(async move {
             let info = inner.ensure_doc(&project_id).await?;
-            if info.owner_sign_pub != sign_pub(&inner.identity) {
-                return Err(SyncError::NotOwner);
-            }
+            inner.require_admin(&project_id, &info).await?;
             inner.reconcile(&project_id).await?;
             let doc = inner.open_doc(&info.doc_id).await?;
             let mut ticket = doc
@@ -619,7 +749,7 @@ impl SyncService {
                         .ok()
                         .and_then(|b| b.try_into().ok())
                         .ok_or(SyncError::InvalidDeviceCode)?;
-                    let blob = crypto::encrypt_for_peer(project_key.as_ref(), &peer)?;
+                    let blob = handoff_blob(&project_key, 0, &peer)?;
                     inner.write(&doc, &keys::peer_key(&code), blob).await?;
                     inner.db()?.conn().execute(
                         "INSERT INTO sync_invite (id,project_id,kind,peer_id,level,created_at,expires_at) VALUES (?1,?2,'device',?3,?4,?5,?6)",
@@ -675,11 +805,9 @@ impl SyncService {
         let url = self.rt.block_on(async move {
             // A project that isn't shared yet is this device's own; ensure_doc shares it.
             let info = inner.ensure_doc(&pid).await?;
-            if info.owner_sign_pub != sign_pub(&inner.identity) {
-                return Err(SyncError::NotOwner);
-            }
+            inner.require_admin(&pid, &info).await?;
             let doc = inner.open_doc(&info.doc_id).await?;
-            let r = inner.sign_relay(&pid, &code, &name, false);
+            let r = inner.sign_relay(&info.owner_sign_pub, &pid, &code, &name, false);
             inner.write(&doc, &keys::relay(&code), serde_json::to_vec(&r)?).await?;
             inner.reconcile(&pid).await?;
             let ticket = doc
@@ -705,16 +833,14 @@ impl SyncService {
         let (pid, code) = (project_id.to_string(), code.to_string());
         self.rt.block_on(async move {
             let info = inner.doc_info(&pid)?.ok_or_else(|| SyncError::NoDoc(pid.clone()))?;
-            if info.owner_sign_pub != sign_pub(&inner.identity) {
-                return Err(SyncError::NotOwner);
-            }
+            inner.require_admin(&pid, &info).await?;
             let doc = inner.open_doc(&info.doc_id).await?;
             let name = valid_relays(&pid, &inner.read_entries(&doc).await?, &info.owner_sign_pub)
                 .into_iter()
                 .find(|r| r.code == code)
                 .map(|r| r.name)
                 .unwrap_or_default();
-            let r = inner.sign_relay(&pid, &code, &name, true);
+            let r = inner.sign_relay(&info.owner_sign_pub, &pid, &code, &name, true);
             inner.write(&doc, &keys::relay(&code), serde_json::to_vec(&r)?).await?;
             inner.reconcile(&pid).await
         })
@@ -748,28 +874,59 @@ impl SyncService {
         self.rt.block_on(async move { inner.members(&project_id).await })
     }
 
+    /// `level`: "owner" (co-owner; root owner only), "editor", "viewer" or "removed".
+    /// Co-owners can change anyone's access except owners'.
     pub fn set_member_level(&self, project_id: &str, peer: &str, level: &str) -> Result<()> {
-        if ![LEVEL_EDITOR, LEVEL_VIEWER, LEVEL_REMOVED].contains(&level) {
+        if ![LEVEL_OWNER, LEVEL_EDITOR, LEVEL_VIEWER, LEVEL_REMOVED].contains(&level) {
             return Err(SyncError::InvalidLink(format!("unknown access level {level}")));
         }
         let inner = self.inner.clone();
         let (project_id, peer, level) = (project_id.to_string(), peer.to_string(), level.to_string());
         self.rt.block_on(async move {
             let info = inner.doc_info(&project_id)?.ok_or_else(|| SyncError::NoDoc(project_id.clone()))?;
-            if info.owner_sign_pub != sign_pub(&inner.identity) {
+            let root = info.owner_sign_pub;
+            let doc = inner.open_doc(&info.doc_id).await?;
+            let key = project_key::load(&inner.db()?, &project_id, &inner.db_key)?;
+            let entries = open_entries(inner.read_entries(&doc).await?, &key);
+            let (is_admin, is_root) = inner.roles(&project_id, &info, &entries);
+            if !is_admin {
                 return Err(SyncError::NotOwner);
             }
-            let doc = inner.open_doc(&info.doc_id).await?;
-            let entries = inner.read_entries(&doc).await?;
-            let grants = valid_grants(&project_id, &entries, &info.owner_sign_pub);
-            let author = grants
+            if peer == inner.my_peer {
+                return Err(SyncError::InvalidLink("you can't change your own access".into()));
+            }
+            let (grants, co_owners) = grants_and_co_owners(&project_id, &entries, &root);
+            let current = grants
                 .get(&peer)
-                .map(|g| g.author.clone())
-                .ok_or_else(|| SyncError::InvalidLink("that member hasn't finished joining yet".into()))?;
-            let g = inner.sign_grant(&project_id, &peer, &author, &level);
+                .ok_or_else(|| SyncError::InvalidLink("that member hasn't finished joining yet".into()))?
+                .clone();
+            if (level == LEVEL_OWNER || current.level == LEVEL_OWNER) && !is_root {
+                return Err(SyncError::NotOwner);
+            }
+            let sign_pub_for = if level == LEVEL_OWNER {
+                let record = latest(&entries, &keys::member(&peer), |a| a == current.author)
+                    .and_then(|e| serde_json::from_slice::<WMember>(&e.content).ok());
+                Some(record.and_then(|m| m.sign_pub).ok_or_else(|| {
+                    SyncError::InvalidLink("that device needs to update Yasecret before it can be a co-owner".into())
+                })?)
+            } else {
+                None
+            };
+            // Grants a co-owner issued stop counting once they're demoted: re-sign them so
+            // the people they let in keep their access.
+            if let (Some(co_key), true) = (co_owners.get(&peer), level != LEVEL_OWNER) {
+                let co_hex = hex::encode(co_key);
+                for g in grants.values().filter(|g| g.signed_by.as_deref() == Some(co_hex.as_str())) {
+                    let again = inner.sign_grant(&root, &project_id, &g.peer_id, &g.author, &g.level, None);
+                    inner.write(&doc, &keys::grant(&g.peer_id), serde_json::to_vec(&again)?).await?;
+                }
+            }
+            let g = inner.sign_grant(&root, &project_id, &peer, &current.author, &level, sign_pub_for);
             inner.write(&doc, &keys::grant(&peer), serde_json::to_vec(&g)?).await?;
             if level == LEVEL_REMOVED {
-                // The removed device still holds the old key; switch everyone else to a new one.
+                // The removed device still holds the old key; switch everyone else (this
+                // device included, so every owner agrees which rotation is newest) to a new one.
+                let rotated_at = now();
                 let new_key = {
                     let db = inner.db()?;
                     let key = project_key::rotate(&db, &project_id, &inner.db_key)?;
@@ -783,9 +940,9 @@ impl SyncService {
                     )?;
                     Zeroizing::new(key)
                 };
-                for g in grants.values().filter(|g| g.peer_id != peer && g.peer_id != inner.my_peer && g.level != LEVEL_REMOVED) {
-                    let Some(pub_key) = hex::decode(&g.peer_id).ok().and_then(|b| <[u8; 32]>::try_from(b).ok()) else { continue };
-                    let blob = crypto::encrypt_for_peer(new_key.as_ref(), &pub_key)?;
+                for g in grants.values().filter(|g| g.peer_id != peer && g.level != LEVEL_REMOVED) {
+                    let Some(pub_key) = hex32(&g.peer_id) else { continue };
+                    let blob = handoff_blob(&new_key, rotated_at, &pub_key)?;
                     inner.write(&doc, &keys::peer_key(&g.peer_id), blob).await?;
                 }
                 inner.reconcile(&project_id).await?;
@@ -797,10 +954,11 @@ impl SyncService {
 
     pub fn status(&self, project_id: &str) -> Result<SyncStatus> {
         if let Some(st) = self.inner.live.lock().unwrap().get(project_id) {
-            if let (Some(is_owner), Some(level)) = (st.is_owner, &st.my_level) {
+            if let (Some(is_owner), Some(is_root), Some(level)) = (st.is_owner, st.is_root, &st.my_level) {
                 return Ok(SyncStatus {
                     shared: true,
                     is_owner,
+                    is_root,
                     my_level: level.clone(),
                     peers_online: people_online(st),
                     last_synced_at: st.last_synced_at,
@@ -810,10 +968,10 @@ impl SyncService {
         }
         let info = self.inner.doc_info(project_id)?;
         let Some(info) = info else { return Ok(SyncStatus::default()) };
-        let is_owner = info.owner_sign_pub == sign_pub(&self.inner.identity);
+        let is_root = info.owner_sign_pub == sign_pub(&self.inner.identity);
         let inner = self.inner.clone();
         let pid = project_id.to_string();
-        let my_level = if is_owner {
+        let my_level = if is_root {
             LEVEL_OWNER.to_string()
         } else {
             self.rt
@@ -829,7 +987,8 @@ impl SyncService {
         let st = live.get(project_id);
         Ok(SyncStatus {
             shared: true,
-            is_owner,
+            is_owner: is_root || my_level == LEVEL_OWNER,
+            is_root,
             my_level,
             peers_online: st.map(people_online).unwrap_or(0),
             last_synced_at: st.and_then(|s| s.last_synced_at),
@@ -964,19 +1123,55 @@ impl Inner {
         Ok(out)
     }
 
-    fn sign_grant(&self, project_id: &str, peer: &str, author: &str, level: &str) -> WGrant {
-        sign_grant(&self.identity, project_id, peer, author, level)
+    /// How this device signs in a project: nothing extra as the root owner, its key as a co-owner.
+    fn signed_by(&self, root: &[u8; 32]) -> Option<String> {
+        let mine = sign_pub(&self.identity);
+        (mine != *root).then(|| hex::encode(mine))
     }
 
-    fn sign_relay(&self, project_id: &str, code: &str, name: &str, removed: bool) -> WRelay {
+    fn sign_grant(&self, root: &[u8; 32], project_id: &str, peer: &str, author: &str, level: &str, sign_pub_for: Option<String>) -> WGrant {
+        sign_grant(&self.identity, project_id, peer, author, level, self.signed_by(root), sign_pub_for)
+    }
+
+    fn sign_relay(&self, root: &[u8; 32], project_id: &str, code: &str, name: &str, removed: bool) -> WRelay {
         let added_at = now();
-        let msg = relay_msg(project_id, code, name, added_at, removed);
+        let signed_by = self.signed_by(root);
+        let msg = relay_msg(project_id, code, name, added_at, removed, signed_by.as_deref());
         WRelay {
             code: code.to_string(),
             name: name.to_string(),
             added_at,
             removed,
             signature: crypto::sign(msg.as_bytes(), &self.identity.signing_key()),
+            signed_by,
+        }
+    }
+
+    /// (may manage people and relays, is the root owner)
+    fn roles(&self, project_id: &str, info: &DocInfo, entries: &[RawEntry]) -> (bool, bool) {
+        let mine = sign_pub(&self.identity);
+        let is_root = info.owner_sign_pub == mine;
+        let co_owner = grants_and_co_owners(project_id, entries, &info.owner_sign_pub).1.get(&self.my_peer) == Some(&mine);
+        (is_root || co_owner, is_root)
+    }
+
+    async fn require_admin(&self, project_id: &str, info: &DocInfo) -> Result<()> {
+        if info.owner_sign_pub == sign_pub(&self.identity) {
+            return Ok(());
+        }
+        let doc = self.open_doc(&info.doc_id).await?;
+        let entries = self.read_entries(&doc).await?;
+        if self.roles(project_id, info, &entries).0 { Ok(()) } else { Err(SyncError::NotOwner) }
+    }
+
+    fn my_member_record(&self) -> WMember {
+        WMember {
+            peer_id: self.my_peer.clone(),
+            name: self.device_name.clone(),
+            joined_at: now(),
+            invite_id: None,
+            proof: vec![],
+            sign_pub: Some(hex::encode(sign_pub(&self.identity))),
         }
     }
 
@@ -1086,12 +1281,10 @@ impl Inner {
                         None => None,
                     }
                 }
-                InviteSecret::DeviceBound => by_owner(&keys::peer_key(&self.my_peer)).map(|e| {
-                    crypto::decrypt_from_peer(&e.content, &self.identity.x25519_secret())
-                        .ok()
-                        .and_then(|p| <[u8; 32]>::try_from(p.as_slice()).ok())
-                        .map(|k| (k, None))
-                }).flatten(),
+                InviteSecret::DeviceBound => {
+                    let authors: HashSet<String> = owner_authors.iter().map(|a| a.to_string()).collect();
+                    chosen_handoff(&entries, &self.my_peer, &authors, &self.identity.x25519_secret()).map(|k| (k, None))
+                }
             };
             // The project record is sealed: it can only be read once the key is known.
             let project = key.as_ref().and_then(|(k, _)| {
@@ -1144,7 +1337,7 @@ impl Inner {
             self.write(&doc, &keys::invite(id), serde_json::to_vec(&inv)?).await?;
         }
         let proof = join_proof(&project_key_bytes, &project.id, &self.my_peer, &self.author.to_string());
-        let member = WMember { peer_id: self.my_peer.clone(), name: self.device_name.clone(), joined_at: now(), invite_id, proof };
+        let member = WMember { invite_id, proof, ..self.my_member_record() };
         self.write(&doc, &keys::member(&self.my_peer), seal(&project_key_bytes, &serde_json::to_vec(&member)?)?).await?;
         self.reconcile(&project.id).await?;
         self.revision.fetch_add(1, Ordering::SeqCst);
@@ -1165,8 +1358,8 @@ impl Inner {
 
     fn refresh_cache(&self, project_id: &str, info: &DocInfo, entries: &[RawEntry]) {
         let grants = valid_grants(project_id, entries, &info.owner_sign_pub);
-        let is_owner = info.owner_sign_pub == sign_pub(&self.identity);
-        let level = if is_owner {
+        let is_root = info.owner_sign_pub == sign_pub(&self.identity);
+        let level = if is_root {
             LEVEL_OWNER.to_string()
         } else {
             grants.get(&self.my_peer).map(|g| g.level.clone()).unwrap_or_else(|| "pending".into())
@@ -1180,7 +1373,8 @@ impl Inner {
                 let _ = db.conn().execute("UPDATE sync_doc SET my_level = ?1 WHERE project_id = ?2", rusqlite::params![&level, project_id]);
             }
         }
-        st.is_owner = Some(is_owner);
+        st.is_owner = Some(is_root || level == LEVEL_OWNER);
+        st.is_root = Some(is_root);
         st.my_level = Some(level);
         st.members = Some(members);
         st.relays = Some(valid_relays(project_id, entries, &info.owner_sign_pub));
@@ -1271,7 +1465,9 @@ fn members_from(entries: &[RawEntry], grants: &HashMap<String, WGrant>, my_peer:
         if level == LEVEL_REMOVED {
             continue;
         }
-        out.push(Member { is_me: m.peer_id == my_peer, peer_id: m.peer_id, name: m.name, level, joined_at: m.joined_at });
+        // The root owner's grant is the owner grant without a co-owner signing key.
+        let is_root = grants.get(&m.peer_id).is_some_and(|g| g.level == LEVEL_OWNER && g.sign_pub.is_none());
+        out.push(Member { is_me: m.peer_id == my_peer, peer_id: m.peer_id, name: m.name, level, joined_at: m.joined_at, is_root });
     }
     out.sort_by(|a, b| (a.level != LEVEL_OWNER, a.joined_at).cmp(&(b.level != LEVEL_OWNER, b.joined_at)));
     out
@@ -1291,27 +1487,9 @@ fn latest<'a>(entries: &'a [RawEntry], key: &str, accept: impl Fn(&str) -> bool)
         .max_by_key(|e| e.timestamp)
 }
 
-/// Latest owner-signed grant per peer.
-fn valid_grants(project_id: &str, entries: &[RawEntry], owner: &[u8; 32]) -> HashMap<String, WGrant> {
-    let mut out: HashMap<String, WGrant> = HashMap::new();
-    for e in entries.iter().filter(|e| e.key.starts_with("v2/grant/")) {
-        let Ok(g) = serde_json::from_slice::<WGrant>(&e.content) else { continue };
-        if e.key != keys::grant(&g.peer_id) {
-            continue;
-        }
-        let msg = grant_msg(project_id, &g.peer_id, &g.author, &g.level, g.granted_at);
-        if crypto::verify(msg.as_bytes(), &g.signature, owner).is_err() {
-            continue;
-        }
-        let rank = |l: &str| if l == LEVEL_REMOVED { 1 } else { 0 };
-        match out.get(&g.peer_id) {
-            Some(prev) if (prev.granted_at, rank(&prev.level)) >= (g.granted_at, rank(&g.level)) => {}
-            _ => {
-                out.insert(g.peer_id.clone(), g);
-            }
-        }
-    }
-    out
+/// Latest valid grant per peer; see `grants_and_co_owners`.
+fn valid_grants(project_id: &str, entries: &[RawEntry], root: &[u8; 32]) -> HashMap<String, WGrant> {
+    grants_and_co_owners(project_id, entries, root).0
 }
 
 fn plan_reconcile(
@@ -1323,28 +1501,34 @@ fn plan_reconcile(
     my_author: &str,
 ) -> Result<Plan> {
     let mut plan = Plan { pushes: Vec::new(), changed_local: false };
+    // `am_owner`: the root owner, who publishes the project record and its own grant.
     let am_owner = *owner_sign_pub == sign_pub(&inner.identity);
-    let grants = valid_grants(project_id, entries, owner_sign_pub);
+    let (grants, co_owners) = grants_and_co_owners(project_id, entries, owner_sign_pub);
+    let am_co_owner = co_owners.get(&inner.my_peer) == Some(&sign_pub(&inner.identity));
 
     if am_owner {
         let mine = grants.get(&inner.my_peer);
-        if mine.map(|g| g.author != my_author || g.level != LEVEL_OWNER).unwrap_or(true) {
-            let g = inner.sign_grant(project_id, &inner.my_peer, my_author, LEVEL_OWNER);
+        if mine.map(|g| g.author != my_author || g.level != LEVEL_OWNER || g.sign_pub.is_some()).unwrap_or(true) {
+            let g = inner.sign_grant(owner_sign_pub, project_id, &inner.my_peer, my_author, LEVEL_OWNER, None);
             plan.pushes.push((keys::grant(&inner.my_peer), serde_json::to_vec(&g)?));
         }
-        if latest(entries, &keys::member(&inner.my_peer), |a| a == my_author).is_none() {
-            let m = WMember { peer_id: inner.my_peer.clone(), name: inner.device_name.clone(), joined_at: now(), invite_id: None, proof: vec![] };
-            plan.pushes.push((keys::member(&inner.my_peer), serde_json::to_vec(&m)?));
-        }
+    }
+    if am_owner || am_co_owner {
         let project_key = project_key::load(db, project_id, &inner.db_key)?;
-        plan.pushes.extend(admit_members(db, project_id, entries, &grants, &project_key, &inner.identity)?);
+        plan.pushes.extend(admit_members(db, project_id, entries, &grants, &project_key, &inner.identity, inner.signed_by(owner_sign_pub))?);
     }
 
-    // A member record sealed with a replaced key can't be read any more: publish it again.
-    if !am_owner && grants.get(&inner.my_peer).is_some_and(|g| g.author == my_author && g.level != LEVEL_REMOVED)
-        && latest(entries, &keys::member(&inner.my_peer), |a| a == my_author).is_none()
-    {
-        let m = WMember { peer_id: inner.my_peer.clone(), name: inner.device_name.clone(), joined_at: now(), invite_id: None, proof: vec![] };
+    // Publish this device's member record when it's missing (sealed with a replaced key, or
+    // the owner's first pass) or predates signing keys.
+    let admitted = am_owner || grants.get(&inner.my_peer).is_some_and(|g| g.author == my_author && g.level != LEVEL_REMOVED);
+    let my_record = latest(entries, &keys::member(&inner.my_peer), |a| a == my_author)
+        .and_then(|e| serde_json::from_slice::<WMember>(&e.content).ok());
+    if admitted && my_record.as_ref().is_none_or(|m| m.sign_pub.is_none()) {
+        let mut m = inner.my_member_record();
+        if let Some(old) = my_record {
+            m.joined_at = old.joined_at;
+            m.invite_id = old.invite_id;
+        }
         plan.pushes.push((keys::member(&inner.my_peer), serde_json::to_vec(&m)?));
     }
 
@@ -1356,19 +1540,13 @@ fn plan_reconcile(
     let owner_authors: HashSet<String> = grants.values().filter(|g| g.level == LEVEL_OWNER).map(|g| g.author.clone()).collect();
     let i_can_write = am_owner || writer_authors.contains(my_author);
 
-    // Pick up a rotated project key before touching values encrypted with it.
-    if !am_owner {
-        if let Some(e) = latest(entries, &keys::peer_key(&inner.my_peer), |a| owner_authors.contains(a)) {
-            if let Some(key) = crypto::decrypt_from_peer(&e.content, &inner.identity.x25519_secret())
-                .ok()
-                .and_then(|p| <[u8; 32]>::try_from(p.as_slice()).ok())
-            {
-                let current = project_key::load(db, project_id, &inner.db_key)?;
-                if *current != key {
-                    project_key::rekey(db, project_id, &inner.db_key, &key)?;
-                    plan.changed_local = true;
-                }
-            }
+    // Pick up a rotated project key before touching values encrypted with it. Owners take
+    // part too: a co-owner may have rotated it.
+    if let Some(key) = chosen_handoff(entries, &inner.my_peer, &owner_authors, &inner.identity.x25519_secret()) {
+        let current = project_key::load(db, project_id, &inner.db_key)?;
+        if *current != key {
+            project_key::rekey(db, project_id, &inner.db_key, &key)?;
+            plan.changed_local = true;
         }
     }
 
@@ -1648,6 +1826,7 @@ fn admit_members(
     grants: &HashMap<String, WGrant>,
     project_key: &[u8; 32],
     signer: &Identity,
+    signed_by: Option<String>,
 ) -> Result<Vec<(String, Vec<u8>)>> {
     let mut pushes = Vec::new();
     for e in entries.iter().filter(|e| e.key.starts_with("v2/member/")) {
@@ -1687,7 +1866,7 @@ fn admit_members(
                 .ok(),
         };
         let Some((invite_row, level)) = pending else { continue };
-        let g = sign_grant(signer, project_id, &m.peer_id, &e.author, &level);
+        let g = sign_grant(signer, project_id, &m.peer_id, &e.author, &level, signed_by.clone(), None);
         pushes.push((keys::grant(&m.peer_id), serde_json::to_vec(&g)?));
         db.conn().execute(
             "UPDATE sync_invite SET redeemed_by = ?1 WHERE id = ?2",
@@ -1732,7 +1911,7 @@ mod tests {
     }
 
     fn member_entry(peer: &str, author: &str, invite: Option<&str>, proof: Vec<u8>) -> RawEntry {
-        let m = WMember { peer_id: peer.into(), name: "x".into(), joined_at: 1, invite_id: invite.map(String::from), proof };
+        let m = WMember { peer_id: peer.into(), name: "x".into(), joined_at: 1, invite_id: invite.map(String::from), proof, sign_pub: None };
         RawEntry { key: keys::member(peer), author: author.into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap(), legacy: false }
     }
 
@@ -1740,7 +1919,7 @@ mod tests {
     fn ticket_holder_without_project_key_cannot_claim_a_link_invite() {
         let (_d, db, me, pid, key) = owner_db();
         let forged = member_entry("attacker", "attacker-author", Some("inv1"), vec![0u8; 32]);
-        let pushes = admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me).unwrap();
+        let pushes = admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me, None).unwrap();
         assert!(pushes.is_empty(), "no grant without a valid proof");
     }
 
@@ -1749,23 +1928,23 @@ mod tests {
         let (_d, db, me, pid, key) = owner_db();
         let wrong_key = [9u8; 32];
         let forged = member_entry("victimpeer", "attacker-author", None, join_proof(&wrong_key, &pid, "victimpeer", "attacker-author"));
-        assert!(admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me).unwrap().is_empty());
+        assert!(admit_members(&db, &pid, &[forged], &HashMap::new(), &key, &me, None).unwrap().is_empty());
     }
 
     #[test]
     fn joiner_with_valid_proof_is_admitted_once_and_regranted_if_needed() {
         let (_d, db, me, pid, key) = owner_db();
         let good = member_entry("friend", "friend-author", Some("inv1"), join_proof(&key, &pid, "friend", "friend-author"));
-        let pushes = admit_members(&db, &pid, &[good], &HashMap::new(), &key, &me).unwrap();
+        let pushes = admit_members(&db, &pid, &[good], &HashMap::new(), &key, &me, None).unwrap();
         assert_eq!(pushes.len(), 1);
         let g: WGrant = serde_json::from_slice(&pushes[0].1).unwrap();
         assert_eq!((g.peer_id.as_str(), g.author.as_str(), g.level.as_str()), ("friend", "friend-author", "editor"));
         // Grant never landed in the doc: the same member is granted again.
         let again = member_entry("friend", "friend-author", Some("inv1"), join_proof(&key, &pid, "friend", "friend-author"));
-        assert_eq!(admit_members(&db, &pid, &[again], &HashMap::new(), &key, &me).unwrap().len(), 1);
+        assert_eq!(admit_members(&db, &pid, &[again], &HashMap::new(), &key, &me, None).unwrap().len(), 1);
         // A different peer can't reuse the redeemed invite.
         let other = member_entry("other", "other-author", Some("inv1"), join_proof(&key, &pid, "other", "other-author"));
-        assert!(admit_members(&db, &pid, &[other], &HashMap::new(), &key, &me).unwrap().is_empty());
+        assert!(admit_members(&db, &pid, &[other], &HashMap::new(), &key, &me, None).unwrap().is_empty());
     }
 
     fn wsecret(id: &str, env: &str, key: &str, ts: i64, val: u8) -> WSecret {
@@ -1855,8 +2034,8 @@ mod tests {
         let (_b, _, intruder, _, _) = owner_db();
         let owner_pub = sign_pub(&owner);
         let entry = |signer: &Identity, code: &str, removed: bool, at: i64| {
-            let msg = relay_msg("p1", code, "box", at, removed);
-            let r = WRelay { code: code.into(), name: "box".into(), added_at: at, removed, signature: crypto::sign(msg.as_bytes(), &signer.signing_key()) };
+            let msg = relay_msg("p1", code, "box", at, removed, None);
+            let r = WRelay { code: code.into(), name: "box".into(), added_at: at, removed, signature: crypto::sign(msg.as_bytes(), &signer.signing_key()), signed_by: None };
             RawEntry { key: keys::relay(code), author: "a".into(), timestamp: at as u64, content: serde_json::to_vec(&r).unwrap(), legacy: false }
         };
         let good = "aa".repeat(32);
@@ -1879,7 +2058,7 @@ mod tests {
 
     fn joined_member(pid: &str, key: &[u8; 32], joined_at: i64) -> RawEntry {
         let proof = join_proof(key, pid, "latecomer", "late-author");
-        let m = WMember { peer_id: "latecomer".into(), name: "x".into(), joined_at, invite_id: Some("old".into()), proof };
+        let m = WMember { peer_id: "latecomer".into(), name: "x".into(), joined_at, invite_id: Some("old".into()), proof, sign_pub: None };
         RawEntry { key: keys::member("latecomer"), author: "late-author".into(), timestamp: 1, content: serde_json::to_vec(&m).unwrap(), legacy: false }
     }
 
@@ -1889,7 +2068,7 @@ mod tests {
         let (_d, db, me, pid, key) = owner_db();
         expired_link_invite(&db, &pid, 3600);
         let m = joined_member(&pid, &key, now() - 2 * 3600);
-        assert_eq!(admit_members(&db, &pid, &[m], &HashMap::new(), &key, &me).unwrap().len(), 1);
+        assert_eq!(admit_members(&db, &pid, &[m], &HashMap::new(), &key, &me, None).unwrap().len(), 1);
     }
 
     #[test]
@@ -1897,12 +2076,12 @@ mod tests {
         let (_d, db, me, pid, key) = owner_db();
         expired_link_invite(&db, &pid, 3600);
         let late = joined_member(&pid, &key, now());
-        assert!(admit_members(&db, &pid, &[late], &HashMap::new(), &key, &me).unwrap().is_empty());
+        assert!(admit_members(&db, &pid, &[late], &HashMap::new(), &key, &me, None).unwrap().is_empty());
 
         let (_d2, db2, me2, pid2, key2) = owner_db();
         expired_link_invite(&db2, &pid2, ADMIT_GRACE_SECS + 3600);
         let in_time = joined_member(&pid2, &key2, now() - ADMIT_GRACE_SECS - 2 * 3600);
-        assert!(admit_members(&db2, &pid2, &[in_time], &HashMap::new(), &key2, &me2).unwrap().is_empty());
+        assert!(admit_members(&db2, &pid2, &[in_time], &HashMap::new(), &key2, &me2, None).unwrap().is_empty());
     }
 
     #[test]
@@ -1922,5 +2101,74 @@ mod tests {
         assert_eq!(keys_seen, vec!["v2/env/e1", "v2/env/e3", "v2/grant/p"], "a record sealed with another key counts as missing");
         assert_eq!(opened[0].content, env.to_vec());
         assert!(!opened[0].legacy && opened[1].legacy && !opened[2].legacy);
+    }
+
+    fn grant_entry(signer: &Identity, root: &Identity, peer: &str, level: &str, at: i64, sign_pub_for: Option<&Identity>) -> RawEntry {
+        let signed_by = (signer.id != root.id).then(|| hex::encode(super::sign_pub(signer)));
+        let mut g = sign_grant(signer, "p1", peer, &format!("{peer}-author"), level, signed_by, sign_pub_for.map(|i| hex::encode(super::sign_pub(i))));
+        g.granted_at = at;
+        let msg = grant_msg("p1", &g);
+        g.signature = crypto::sign(msg.as_bytes(), &signer.signing_key());
+        RawEntry { key: keys::grant(peer), author: "x".into(), timestamp: at as u64, content: serde_json::to_vec(&g).unwrap(), legacy: false }
+    }
+
+    #[test]
+    fn co_owners_manage_members_but_not_owners() {
+        let (_a, _, root, _, _) = owner_db();
+        let (_b, _, co, _, _) = owner_db();
+        let root_pub = super::sign_pub(&root);
+        let entries = vec![
+            grant_entry(&root, &root, "root-peer", LEVEL_OWNER, 1, None),
+            grant_entry(&root, &root, "co-peer", LEVEL_OWNER, 2, Some(&co)),
+            grant_entry(&co, &root, "m1", LEVEL_EDITOR, 3, None),
+            grant_entry(&co, &root, "m2", LEVEL_OWNER, 3, Some(&co)),
+            grant_entry(&co, &root, "root-peer", LEVEL_REMOVED, 4, None),
+        ];
+        let (grants, co_owners) = grants_and_co_owners("p1", &entries, &root_pub);
+        assert_eq!(co_owners.get("co-peer"), Some(&super::sign_pub(&co)));
+        assert_eq!(grants.get("m1").map(|g| g.level.as_str()), Some(LEVEL_EDITOR), "co-owner admits members");
+        assert!(!grants.contains_key("m2"), "only the root owner appoints owners");
+        assert_eq!(grants.get("root-peer").map(|g| g.level.as_str()), Some(LEVEL_OWNER), "nobody but the root changes the root");
+    }
+
+    #[test]
+    fn grants_signed_by_a_demoted_co_owner_stop_counting() {
+        let (_a, _, root, _, _) = owner_db();
+        let (_b, _, co, _, _) = owner_db();
+        let entries = vec![
+            grant_entry(&root, &root, "co-peer", LEVEL_OWNER, 2, Some(&co)),
+            grant_entry(&co, &root, "m1", LEVEL_EDITOR, 3, None),
+            grant_entry(&root, &root, "co-peer", LEVEL_EDITOR, 4, None),
+            grant_entry(&co, &root, "m3", LEVEL_EDITOR, 5, None),
+        ];
+        let (grants, co_owners) = grants_and_co_owners("p1", &entries, &super::sign_pub(&root));
+        assert!(co_owners.is_empty());
+        assert!(!grants.contains_key("m1") && !grants.contains_key("m3"));
+        assert_eq!(grants.get("co-peer").map(|g| g.level.as_str()), Some(LEVEL_EDITOR));
+    }
+
+    #[test]
+    fn the_newest_key_rotation_wins_whoever_wrote_it() {
+        let (_a, _, me, _, _) = owner_db();
+        let my_pub = me.x25519_public().to_bytes();
+        let handoff = |key: [u8; 32], at: i64, author: &str| RawEntry {
+            key: keys::peer_key("me"),
+            author: author.into(),
+            timestamp: 1,
+            content: handoff_blob(&key, at, &my_pub).unwrap(),
+            legacy: false,
+        };
+        let legacy = RawEntry {
+            key: keys::peer_key("me"),
+            author: "a0".into(),
+            timestamp: 9,
+            content: crypto::encrypt_for_peer(&[9u8; 32], &my_pub).unwrap(),
+            legacy: false,
+        };
+        let entries = vec![handoff([1u8; 32], 200, "a1"), legacy, handoff([2u8; 32], 100, "a2")];
+        let authors: HashSet<String> = ["a0", "a1", "a2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(chosen_handoff(&entries, "me", &authors, &me.x25519_secret()), Some([1u8; 32]));
+        let only_a0: HashSet<String> = ["a0".to_string()].into_iter().collect();
+        assert_eq!(chosen_handoff(&entries, "me", &only_a0, &me.x25519_secret()), Some([9u8; 32]), "older handoffs still read");
     }
 }

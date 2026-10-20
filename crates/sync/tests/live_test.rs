@@ -290,3 +290,71 @@ fn relay_lets_members_join_and_sync_while_the_owner_is_offline() {
     });
     rt.block_on(relay.shutdown());
 }
+
+#[test]
+fn a_co_owner_runs_the_project_while_the_owner_is_away() {
+    let mut owner = Device::new("owner");
+    let (pid, env_id) = {
+        let db = owner.db();
+        let p = project::create(&db, "team-two", None, "owner").unwrap();
+        project_key::create(&db, &p.id, &owner.db_key).unwrap();
+        let pk = project_key::load(&db, &p.id, &owner.db_key).unwrap();
+        let env = environment::create(&db, &p.id, "prod").unwrap();
+        secret::create(&db, &env.id, "TOKEN", b"t1", &pk, "owner", None).unwrap();
+        (p.id, env.id)
+    };
+    let co = Device::new("co");
+    co.svc().join(&owner.svc().create_invite(&pid, None, "editor").unwrap()).unwrap();
+    let co_peer = co.svc().device_code();
+    eventually("owner makes them a co-owner", 60, || owner.svc().set_member_level(&pid, &co_peer, "owner").is_ok());
+    eventually("co sees it can manage the project", 60, || {
+        let st = co.svc().status(&pid).unwrap();
+        st.is_owner && !st.is_root
+    });
+    owner.svc.take().unwrap().shutdown();
+
+    // With the owner offline, the co-owner invites and admits someone.
+    let newbie = Device::new("newbie");
+    newbie.svc().join(&co.svc().create_invite(&pid, None, "editor").unwrap()).unwrap();
+    let newbie_peer = newbie.svc().device_code();
+    eventually("co-owner admits the newcomer", 60, || newbie.svc().status(&pid).unwrap().my_level == "editor");
+    eventually("newcomer reads values", 60, || newbie.value(&pid, &env_id, "TOKEN").as_deref() == Some("t1"));
+    assert!(matches!(co.svc().set_member_level(&pid, &newbie_peer, "owner"), Err(SyncError::NotOwner)), "only the root owner appoints owners");
+
+    // The owner comes back, accepts the co-owner's grant, then demotes the co-owner: the
+    // newcomer keeps access because the owner re-signs what the co-owner granted.
+    owner.restart();
+    eventually("owner sees the newcomer", 60, || {
+        owner.svc().members(&pid).unwrap().iter().any(|m| m.peer_id == newbie_peer && m.level == "editor")
+    });
+
+    // A co-owner removing someone rotates the key; the owner switches to it too.
+    let temp = Device::new("temp");
+    temp.svc().join(&owner.svc().create_invite(&pid, None, "viewer").unwrap()).unwrap();
+    let temp_peer = temp.svc().device_code();
+    eventually("temp admitted", 60, || temp.svc().status(&pid).unwrap().my_level == "viewer");
+    eventually("co-owner removes temp", 60, || co.svc().set_member_level(&pid, &temp_peer, "removed").is_ok());
+    eventually("owner switches to the co-owner's new key", 60, || {
+        let db = owner.db();
+        let pk = project_key::load(&db, &pid, &owner.db_key).unwrap();
+        let cdb = co.db();
+        let ck = project_key::load(&cdb, &pid, &co.db_key).unwrap();
+        *pk == *ck && owner.value(&pid, &env_id, "TOKEN").as_deref() == Some("t1")
+    });
+    {
+        let db = owner.db();
+        let pk = project_key::load(&db, &pid, &owner.db_key).unwrap();
+        let s = secret::list(&db, &env_id).unwrap().into_iter().find(|s| s.key == "TOKEN").unwrap();
+        std::thread::sleep(Duration::from_millis(1100));
+        secret::update(&db, &s.id, b"t2", &pk, "owner", None).unwrap();
+    }
+    owner.svc().notify_local_change(&pid);
+    eventually("co-owner reads the owner's edit under the new key", 60, || co.value(&pid, &env_id, "TOKEN").as_deref() == Some("t2"));
+    assert_ne!(temp.value(&pid, &env_id, "TOKEN").as_deref(), Some("t2"), "removed device can't read it");
+
+    owner.svc().set_member_level(&pid, &co_peer, "editor").unwrap();
+    eventually("co is no longer an owner", 60, || !co.svc().status(&pid).unwrap().is_owner);
+    assert!(matches!(co.svc().create_invite(&pid, None, "editor"), Err(SyncError::NotOwner)));
+    std::thread::sleep(Duration::from_secs(5));
+    assert_eq!(newbie.svc().status(&pid).unwrap().my_level, "editor", "demoting a co-owner keeps the people they admitted");
+}

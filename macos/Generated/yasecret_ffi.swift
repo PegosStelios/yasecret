@@ -611,7 +611,7 @@ public protocol YasecretSessionProtocol : AnyObject {
     func setExpiry(projectId: String, secretId: String, expiresAt: Int64?) throws 
     
     /**
-     * `level` is "editor", "viewer" or "removed".
+     * `level` is "owner" (make a co-owner; root owner only), "editor", "viewer" or "removed".
      */
     func setMemberLevel(projectId: String, peerId: String, level: String) throws 
     
@@ -1028,7 +1028,7 @@ open func setExpiry(projectId: String, secretId: String, expiresAt: Int64?)throw
 }
     
     /**
-     * `level` is "editor", "viewer" or "removed".
+     * `level` is "owner" (make a co-owner; root owner only), "editor", "viewer" or "removed".
      */
 open func setMemberLevel(projectId: String, peerId: String, level: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
     uniffi_yasecret_ffi_fn_method_yasecretsession_set_member_level(self.uniffiClonePointer(),
@@ -1677,15 +1677,23 @@ public struct FfiMember {
     public var level: String
     public var joinedAt: Int64
     public var isMe: Bool
+    /**
+     * The owner who shared the project; other members at level "owner" are co-owners.
+     */
+    public var isRoot: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(peerId: String, name: String, level: String, joinedAt: Int64, isMe: Bool) {
+    public init(peerId: String, name: String, level: String, joinedAt: Int64, isMe: Bool, 
+        /**
+         * The owner who shared the project; other members at level "owner" are co-owners.
+         */isRoot: Bool) {
         self.peerId = peerId
         self.name = name
         self.level = level
         self.joinedAt = joinedAt
         self.isMe = isMe
+        self.isRoot = isRoot
     }
 }
 
@@ -1708,6 +1716,9 @@ extension FfiMember: Equatable, Hashable {
         if lhs.isMe != rhs.isMe {
             return false
         }
+        if lhs.isRoot != rhs.isRoot {
+            return false
+        }
         return true
     }
 
@@ -1717,6 +1728,7 @@ extension FfiMember: Equatable, Hashable {
         hasher.combine(level)
         hasher.combine(joinedAt)
         hasher.combine(isMe)
+        hasher.combine(isRoot)
     }
 }
 
@@ -1732,7 +1744,8 @@ public struct FfiConverterTypeFfiMember: FfiConverterRustBuffer {
                 name: FfiConverterString.read(from: &buf), 
                 level: FfiConverterString.read(from: &buf), 
                 joinedAt: FfiConverterInt64.read(from: &buf), 
-                isMe: FfiConverterBool.read(from: &buf)
+                isMe: FfiConverterBool.read(from: &buf), 
+                isRoot: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -1742,6 +1755,7 @@ public struct FfiConverterTypeFfiMember: FfiConverterRustBuffer {
         FfiConverterString.write(value.level, into: &buf)
         FfiConverterInt64.write(value.joinedAt, into: &buf)
         FfiConverterBool.write(value.isMe, into: &buf)
+        FfiConverterBool.write(value.isRoot, into: &buf)
     }
 }
 
@@ -2017,7 +2031,14 @@ public func FfiConverterTypeFfiSecret_lower(_ value: FfiSecret) -> RustBuffer {
 
 public struct FfiSyncStatus {
     public var shared: Bool
+    /**
+     * Owner or co-owner: can invite people and change access.
+     */
     public var isOwner: Bool
+    /**
+     * The owner who shared the project: can appoint co-owners and stop sharing.
+     */
+    public var isRoot: Bool
     public var myLevel: String
     public var peersOnline: UInt32
     public var lastSyncedAt: Int64?
@@ -2025,9 +2046,16 @@ public struct FfiSyncStatus {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(shared: Bool, isOwner: Bool, myLevel: String, peersOnline: UInt32, lastSyncedAt: Int64?, lastError: String?) {
+    public init(shared: Bool, 
+        /**
+         * Owner or co-owner: can invite people and change access.
+         */isOwner: Bool, 
+        /**
+         * The owner who shared the project: can appoint co-owners and stop sharing.
+         */isRoot: Bool, myLevel: String, peersOnline: UInt32, lastSyncedAt: Int64?, lastError: String?) {
         self.shared = shared
         self.isOwner = isOwner
+        self.isRoot = isRoot
         self.myLevel = myLevel
         self.peersOnline = peersOnline
         self.lastSyncedAt = lastSyncedAt
@@ -2043,6 +2071,9 @@ extension FfiSyncStatus: Equatable, Hashable {
             return false
         }
         if lhs.isOwner != rhs.isOwner {
+            return false
+        }
+        if lhs.isRoot != rhs.isRoot {
             return false
         }
         if lhs.myLevel != rhs.myLevel {
@@ -2063,6 +2094,7 @@ extension FfiSyncStatus: Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(shared)
         hasher.combine(isOwner)
+        hasher.combine(isRoot)
         hasher.combine(myLevel)
         hasher.combine(peersOnline)
         hasher.combine(lastSyncedAt)
@@ -2080,6 +2112,7 @@ public struct FfiConverterTypeFfiSyncStatus: FfiConverterRustBuffer {
             try FfiSyncStatus(
                 shared: FfiConverterBool.read(from: &buf), 
                 isOwner: FfiConverterBool.read(from: &buf), 
+                isRoot: FfiConverterBool.read(from: &buf), 
                 myLevel: FfiConverterString.read(from: &buf), 
                 peersOnline: FfiConverterUInt32.read(from: &buf), 
                 lastSyncedAt: FfiConverterOptionInt64.read(from: &buf), 
@@ -2090,6 +2123,7 @@ public struct FfiConverterTypeFfiSyncStatus: FfiConverterRustBuffer {
     public static func write(_ value: FfiSyncStatus, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.shared, into: &buf)
         FfiConverterBool.write(value.isOwner, into: &buf)
+        FfiConverterBool.write(value.isRoot, into: &buf)
         FfiConverterString.write(value.myLevel, into: &buf)
         FfiConverterUInt32.write(value.peersOnline, into: &buf)
         FfiConverterOptionInt64.write(value.lastSyncedAt, into: &buf)
@@ -2832,7 +2866,7 @@ private var initializationResult: InitializationResult = {
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_expiry() != 25215) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 59959) {
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 3476) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_shared_project_ids() != 53374) {

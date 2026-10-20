@@ -49,6 +49,7 @@ Each project you share becomes a replicated document synced over [iroh](https://
 - **Invite link:** single use, expires after 24 hours. It carries a one-time key that unwraps the project key, so send it over a private channel.
 - **Device-bound invite:** your teammate sends you their device code (an X25519 public key); the project key is encrypted to that device only, so the link is safe to send anywhere.
 - Every change is accepted only if its author holds an access grant signed by the project owner (Ed25519), and joiners must prove they hold the project key before they're admitted. Holding the doc ticket alone gets you nothing.
+- **Co-owners.** The owner can make any member a co-owner. Co-owners can invite people, admit them and change or remove access while the owner is away; only the owner appoints or demotes co-owners or stops sharing. Grants a co-owner signed stop counting the moment they're demoted, and the owner re-signs them so the people they admitted keep their access.
 - **Removing someone** rotates the project key and re-encrypts every value, so they can't read anything written afterwards. **Stop sharing** does the same for everyone.
 - Conflicts resolve last-write-wins per variable; deletions sync as tombstones; every overwritten value stays in history.
 
@@ -74,7 +75,7 @@ docker run --rm -v yasecret-relay:/data yasecret-relay add 'yasecret://relay?...
 
 The relay gets a read-only copy of the project document and never receives the project key. Project, environment, variable and member records are sealed with that key, so it can't read names or values; it can see how many records there are, device IDs and access levels, and the name you gave the relay. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online (up to a week after the invite expires). Removing a relay stops members from dialing it, but it keeps what it already stored and devices that remember it may keep syncing with it; to cut a relay off completely, stop sharing and share the project again.
 
-Limitations: without a relay, the owner's device must be online for someone to join. Only the owner can invite or change access. Activity logs are kept per device.
+Limitations: without a relay, the owner's device must be online for someone to join. Only the owner and co-owners can invite or change access. Activity logs are kept per device.
 
 ## CLI
 
