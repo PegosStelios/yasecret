@@ -13,3 +13,4 @@ pub mod scan;
 pub mod share;
 pub mod shellenv;
 pub mod target;
+pub mod vault;

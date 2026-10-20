@@ -12,6 +12,7 @@ pub mod project_key;
 pub mod role;
 pub mod secret;
 pub mod tombstone;
+pub mod vault;
 pub mod version;
 
 pub use error::{Result, YasecretError};

@@ -42,6 +42,7 @@ impl From<yasecret_core::error::YasecretError> for FfiError {
             E::WrongPassword       => FfiError::WrongPassword,
             E::PermissionDenied    => FfiError::PermissionDenied,
             E::ReadOnly(_)         => FfiError::PermissionDenied,
+            E::InvalidRecoveryKey  => FfiError::Parse { msg: e.to_string() },
             E::Crypto              => FfiError::Crypto,
             E::NotFound(m)         => FfiError::NotFound { msg: m },
             E::Db(e)               => FfiError::Db { msg: e.to_string() },
@@ -219,22 +220,7 @@ impl YasecretSession {
     pub fn new(db_path: String, password: String) -> Result<Arc<Self>, FfiError> {
         let path = Path::new(&db_path);
 
-        let salt_path = {
-            let mut p = path.to_path_buf();
-            p.set_extension("salt");
-            p
-        };
-        let salt: [u8; 16] = if salt_path.exists() {
-            std::fs::read(&salt_path)
-                .map_err(|e| FfiError::Io { msg: e.to_string() })?
-                .try_into()
-                .map_err(|_| FfiError::Io { msg: "salt file corrupt (expected 16 bytes)".into() })?
-        } else {
-            let s = yasecret_core::crypto::generate_salt();
-            std::fs::write(&salt_path, s)
-                .map_err(|e| FfiError::Io { msg: e.to_string() })?;
-            s
-        };
+        let salt = yasecret_core::vault::load_or_create_salt(path)?;
 
         let db_key = yasecret_core::crypto::derive_db_key(&password, &salt);
 
@@ -242,6 +228,23 @@ impl YasecretSession {
         let conn = Db::open(path, &password).map_err(FfiError::from)?;
 
         Ok(Arc::new(Self { db_path, password, db_key, sync: std::sync::Mutex::new(None), sync_start: std::sync::Mutex::new(()), conn: std::sync::Mutex::new(conn) }))
+    }
+
+    // ── Vault ─────────────────────────────────────────────────────────────────
+
+    /// Makes a new recovery key, retiring any previous one. Show it once; it isn't stored.
+    pub fn create_recovery_key(&self) -> Result<String, FfiError> {
+        Ok(yasecret_core::vault::create_recovery_key(Path::new(&self.db_path), &self.password)?)
+    }
+
+    pub fn has_recovery_key(&self) -> bool {
+        yasecret_core::vault::has_recovery_key(Path::new(&self.db_path))
+    }
+
+    /// Writes an encrypted backup of the whole vault. Restoring it needs the current password.
+    pub fn backup_vault(&self, dest_path: String) -> Result<(), FfiError> {
+        let db = self.open()?;
+        Ok(yasecret_core::vault::backup(&db, Path::new(&self.db_path), Path::new(&dest_path))?)
     }
 
     // ── Projects ──────────────────────────────────────────────────────────────
@@ -887,6 +890,30 @@ pub fn default_db_path() -> String {
     std::fs::create_dir_all(&base).ok();
     base.push("db.sqlite");
     base.to_string_lossy().into_owned()
+}
+
+/// Changes the master password. Close (lock) any session on this vault first.
+#[uniffi::export]
+pub fn change_master_password(db_path: String, old_password: String, new_password: String) -> Result<(), FfiError> {
+    Ok(yasecret_core::vault::change_password(Path::new(&db_path), &old_password, &new_password)?)
+}
+
+/// Sets a new master password using the recovery key. The vault must be locked.
+#[uniffi::export]
+pub fn recover_vault(db_path: String, recovery_key: String, new_password: String) -> Result<(), FfiError> {
+    Ok(yasecret_core::vault::recover(Path::new(&db_path), &recovery_key, &new_password)?)
+}
+
+/// Replaces the vault with a backup once `password` (the password when the backup was made)
+/// opens it. The vault must be locked.
+#[uniffi::export]
+pub fn restore_vault_backup(backup_path: String, db_path: String, password: String) -> Result<(), FfiError> {
+    Ok(yasecret_core::vault::restore(Path::new(&backup_path), Path::new(&db_path), &password)?)
+}
+
+#[uniffi::export]
+pub fn vault_has_recovery_key(db_path: String) -> bool {
+    yasecret_core::vault::has_recovery_key(Path::new(&db_path))
 }
 
 #[uniffi::export]

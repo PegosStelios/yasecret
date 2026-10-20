@@ -39,6 +39,8 @@ enum Commands {
     Peers(cmd::peers::PeersArgs),
     /// Serve the vault to Claude Code and other MCP clients over stdio
     Mcp(cmd::mcp::McpArgs),
+    /// Change the master password, make a recovery key, back up or restore the vault
+    Vault(cmd::vault::VaultArgs),
     /// Run an always-on peer that keeps shared projects reachable while their owner is offline
     Relay(cmd::relay::RelayArgs),
 }
@@ -73,6 +75,7 @@ async fn main() {
         Commands::Peers(args) => cmd::peers::run(args),
         Commands::Mcp(args) => cmd::mcp::run(args).await,
         Commands::Relay(args) => cmd::relay::run(args).await,
+        Commands::Vault(args) => cmd::vault::run(args),
     };
     if let Err(e) = result {
         eprintln!("error: {e}");

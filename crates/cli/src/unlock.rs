@@ -20,27 +20,6 @@ pub fn db_path(override_path: Option<&str>) -> PathBuf {
     base
 }
 
-fn salt_path(db_path: &Path) -> PathBuf {
-    db_path.with_extension("salt")
-}
-
-fn load_or_create_salt(db_path: &Path) -> Result<[u8; 16]> {
-    let sp = salt_path(db_path);
-    if sp.exists() {
-        let bytes = std::fs::read(&sp)?;
-        bytes.try_into().map_err(|_| {
-            yasecret_core::YasecretError::Io(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!("salt file corrupt (expected 16 bytes): {}", sp.display()),
-            ))
-        })
-    } else {
-        let s = crypto::generate_salt();
-        std::fs::write(&sp, s)?;
-        Ok(s)
-    }
-}
-
 pub fn unlock(path: &Path, password_override: Option<&str>) -> Result<Session> {
     let password = match password_override {
         Some(p) => p.to_string(),
@@ -48,7 +27,7 @@ pub fn unlock(path: &Path, password_override: Option<&str>) -> Result<Session> {
             .map_err(yasecret_core::YasecretError::Io)?,
     };
 
-    let salt = load_or_create_salt(path)?;
+    let salt = yasecret_core::vault::load_or_create_salt(path)?;
     let db_key = crypto::derive_db_key(&password, &salt);
     let db = Db::open(path, &password)?;
     let id = identity::load_or_create(&db, "local")?;

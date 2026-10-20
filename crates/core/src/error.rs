@@ -15,6 +15,8 @@ pub enum YasecretError {
     /// A shared project this device may read but not change.
     #[error("{0}")]
     ReadOnly(String),
+    #[error("That recovery key doesn't match this vault")]
+    InvalidRecoveryKey,
     #[error("invalid .env format: {0}")]
     EnvParse(String),
     #[error("io error: {0}")]
