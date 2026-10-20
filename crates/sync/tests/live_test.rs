@@ -148,6 +148,13 @@ fn share_join_edit_delete_roundtrip() {
         environment::list(&member.db(), &pid).unwrap().iter().any(|e| e.id == staging_id)
     });
 
+    // Inheritance travels too.
+    environment::set_parent(&owner.db(), &staging_id, Some(&dev_id)).unwrap();
+    owner.svc().notify_local_change(&pid);
+    eventually("member sees staging inherit from development", 30, || {
+        environment::get(&member.db(), &staging_id).unwrap().inherits_from.as_deref() == Some(dev_id.as_str())
+    });
+
     // The link was single use.
     let stranger = Device::new("stranger");
     match stranger.svc().join(&link) {

@@ -11,6 +11,7 @@ pub fn create(db: &Db, project_id: &str, name: &str) -> Result<Environment> {
         name: name.to_string(),
         created_at: now(),
         updated_at: now(),
+        inherits_from: None,
     };
     db.conn().execute(
         "INSERT INTO environment (id, project_id, name, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
@@ -22,7 +23,7 @@ pub fn create(db: &Db, project_id: &str, name: &str) -> Result<Environment> {
 pub fn get(db: &Db, id: &str) -> Result<Environment> {
     db.conn()
         .query_row(
-            "SELECT id, project_id, name, created_at, updated_at FROM environment WHERE id = ?1",
+            "SELECT id, project_id, name, created_at, updated_at, inherits_from FROM environment WHERE id = ?1",
             [id],
             |r| {
                 Ok(Environment {
@@ -31,6 +32,7 @@ pub fn get(db: &Db, id: &str) -> Result<Environment> {
                     name: r.get(2)?,
                     created_at: r.get(3)?,
                     updated_at: r.get(4)?,
+                    inherits_from: r.get(5)?,
                 })
             },
         )
@@ -39,7 +41,7 @@ pub fn get(db: &Db, id: &str) -> Result<Environment> {
 
 pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id, project_id, name, created_at, updated_at FROM environment WHERE project_id = ?1 ORDER BY created_at",
+        "SELECT id, project_id, name, created_at, updated_at, inherits_from FROM environment WHERE project_id = ?1 ORDER BY created_at",
     )?;
     let rows = stmt.query_map([project_id], |r| {
         Ok(Environment {
@@ -48,9 +50,36 @@ pub fn list(db: &Db, project_id: &str) -> Result<Vec<Environment>> {
             name: r.get(2)?,
             created_at: r.get(3)?,
             updated_at: r.get(4)?,
+            inherits_from: r.get(5)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+}
+
+/// Makes `env_id` inherit `parent`'s variables, or stop inheriting with `None`. The parent
+/// must be in the same project and must not (directly or not) inherit from `env_id`.
+pub fn set_parent(db: &Db, env_id: &str, parent: Option<&str>) -> Result<()> {
+    let env = get(db, env_id)?;
+    if let Some(parent_id) = parent {
+        let mut cur = Some(parent_id.to_string());
+        let mut depth = 0;
+        while let Some(id) = cur {
+            if id == env_id || depth > 32 {
+                return Err(YasecretError::EnvParse(format!("“{}” can't inherit from an environment that inherits from it", env.name)));
+            }
+            let e = get(db, &id)?;
+            if e.project_id != env.project_id {
+                return Err(YasecretError::EnvParse("an environment can only inherit from one in the same project".into()));
+            }
+            cur = e.inherits_from;
+            depth += 1;
+        }
+    }
+    db.conn().execute(
+        "UPDATE environment SET inherits_from = ?1, updated_at = MAX(?2, updated_at + 1) WHERE id = ?3",
+        rusqlite::params![parent, now(), env_id],
+    )?;
+    Ok(())
 }
 
 pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
@@ -64,7 +93,11 @@ pub fn rename(db: &Db, id: &str, new_name: &str) -> Result<()> {
 
 pub fn clone(db: &Db, source_id: &str, new_name: &str) -> Result<Environment> {
     let src = get(db, source_id)?;
-    let e = create(db, &src.project_id, new_name)?;
+    let mut e = create(db, &src.project_id, new_name)?;
+    if let Some(parent) = &src.inherits_from {
+        set_parent(db, &e.id, Some(parent))?;
+        e.inherits_from = Some(parent.clone());
+    }
     let ts = now();
     for s in crate::secret::list(db, source_id)? {
         db.conn().execute(
@@ -93,5 +126,10 @@ pub fn delete(db: &Db, id: &str) -> Result<()> {
     db.conn()
         .execute("DELETE FROM environment WHERE id = ?1", [id])?;
     crate::tombstone::record(db, id, "env", &env.project_id)?;
+    // Environments that inherited from it stand on their own now.
+    db.conn().execute(
+        "UPDATE environment SET inherits_from = NULL, updated_at = MAX(?1, updated_at + 1) WHERE inherits_from = ?2",
+        rusqlite::params![now(), id],
+    )?;
     Ok(())
 }

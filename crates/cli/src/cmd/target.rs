@@ -1,6 +1,6 @@
 //! Resolves `--project` / `--env` names to an unlocked vault plus the project key.
 
-use yasecret_core::{crypto, env_file, environment, models::Environment, models::Project, project, project_key, secret, YasecretError};
+use yasecret_core::{env_file, environment, models::Environment, models::Project, project, project_key, resolve, YasecretError};
 use zeroize::Zeroizing;
 
 pub struct Target {
@@ -32,17 +32,14 @@ impl Target {
         Ok(self.items()?.into_iter().map(|i| (i.key, i.value)).collect())
     }
 
-    /// Like `pairs`, keeping whether each variable is marked secret.
+    /// Like `pairs`, keeping whether each variable is marked secret. Includes variables
+    /// inherited from parent environments, with `${KEY}` references expanded.
     pub fn items(&mut self) -> yasecret_core::Result<Vec<env_file::ExportItem>> {
         self.key = project_key::load(&self.session.db, &self.project.id, &self.session.db_key)?;
-        secret::list(&self.session.db, &self.env.id)?
+        Ok(resolve::resolved(&self.session.db, &self.env.id, &self.key)?
             .into_iter()
-            .map(|s| {
-                let nonce: [u8; 12] = s.nonce.clone().try_into().map_err(|_| YasecretError::Crypto)?;
-                let v = crypto::decrypt(&s.encrypted_value, &nonce, &self.key)?;
-                Ok(env_file::ExportItem { key: s.key, value: String::from_utf8_lossy(&v).into_owned(), is_secret: s.is_secret })
-            })
-            .collect()
+            .map(|v| env_file::ExportItem { key: v.key, value: v.value, is_secret: v.is_secret })
+            .collect())
     }
 }
 

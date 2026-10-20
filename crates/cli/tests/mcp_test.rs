@@ -224,3 +224,21 @@ fn import_env_skips_existing_keys_and_classifies_new_ones() {
     assert_eq!(get("NEW_PASSWORD").unwrap(), ("pw".to_string(), true));
     assert_eq!(get("PORT").unwrap(), ("80".to_string(), false));
 }
+
+#[test]
+fn mcp_tools_see_inherited_variables() {
+    use yasecret_cli::mcp_server::YasecretServer;
+    use yasecret_core::environment;
+    let dir = tempdir().unwrap();
+    let db_path = seed_db_with_secrets(&dir);
+    {
+        let db = Db::open(&db_path, "testpw").unwrap();
+        let p = project::list(&db).unwrap().into_iter().find(|p| p.name == "web").unwrap();
+        let prod = environment::list(&db, &p.id).unwrap().into_iter().find(|e| e.name == "prod").unwrap();
+        let staging = environment::create(&db, &p.id, "staging").unwrap();
+        environment::set_parent(&db, &staging.id, Some(&prod.id)).unwrap();
+    }
+    let server = YasecretServer::new(&db_path, "testpw".to_string(), true);
+    assert!(server.list_secret_keys_impl("web", "staging").contains("\"DB_URL\""));
+    assert_eq!(server.get_secret_impl("web", "staging", "DB_URL"), "postgres://localhost/mydb");
+}

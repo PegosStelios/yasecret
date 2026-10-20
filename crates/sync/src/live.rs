@@ -62,6 +62,8 @@ pub struct WEnv {
     pub created_at: i64,
     pub updated_at: i64,
     pub deleted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inherits_from: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1602,9 +1604,9 @@ fn plan_reconcile(
     let remote_envs: HashMap<String, WEnv> = latest_per_prefix(entries, "v2/env/", &writer_authors);
     let local_envs: HashMap<String, WEnv> = yasecret_core::environment::list(db, project_id)?
         .into_iter()
-        .map(|l| (l.id.clone(), WEnv { id: l.id, name: l.name, created_at: l.created_at, updated_at: l.updated_at, deleted: false }))
+        .map(|l| (l.id.clone(), WEnv { id: l.id, name: l.name, created_at: l.created_at, updated_at: l.updated_at, deleted: false, inherits_from: l.inherits_from }))
         .chain(env_tombs.iter().map(|(id, at)| {
-            (id.clone(), WEnv { id: id.clone(), name: String::new(), created_at: 0, updated_at: *at, deleted: true })
+            (id.clone(), WEnv { id: id.clone(), name: String::new(), created_at: 0, updated_at: *at, deleted: true, inherits_from: None })
         }))
         .collect();
     let env_ids: HashSet<&String> = remote_envs.keys().chain(local_envs.keys()).collect();
@@ -1735,10 +1737,11 @@ fn order_key<T: Serialize + HasUpdatedAt>(x: &T) -> (i64, [u8; 32]) {
 /// Returns false when the row belongs to another project and was left alone.
 fn upsert_env(db: &Db, project_id: &str, r: &WEnv) -> Result<bool> {
     let n = db.conn().execute(
-        "INSERT INTO environment (id, project_id, name, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, created_at = excluded.created_at, updated_at = excluded.updated_at
+        "INSERT INTO environment (id, project_id, name, created_at, updated_at, inherits_from) VALUES (?1,?2,?3,?4,?5,?6)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, created_at = excluded.created_at, updated_at = excluded.updated_at,
+           inherits_from = excluded.inherits_from
          WHERE environment.project_id = excluded.project_id",
-        rusqlite::params![&r.id, project_id, &r.name, r.created_at, r.updated_at],
+        rusqlite::params![&r.id, project_id, &r.name, r.created_at, r.updated_at, &r.inherits_from],
     )?;
     Ok(n > 0)
 }
@@ -1982,7 +1985,7 @@ mod tests {
         let (_d, db, p1, _e1, e2) = two_projects();
         assert!(!apply_remote_secret(&db, &p1, &wsecret("s1", &e2, "INJECTED", 5, 1), None).unwrap());
         assert!(yasecret_core::secret::list(&db, &e2).unwrap().is_empty());
-        let foreign_env = WEnv { id: e2.clone(), name: "pwned".into(), created_at: 0, updated_at: i64::MAX, deleted: false };
+        let foreign_env = WEnv { id: e2.clone(), name: "pwned".into(), created_at: 0, updated_at: i64::MAX, deleted: false, inherits_from: None };
         assert!(!upsert_env(&db, &p1, &foreign_env).unwrap());
         assert_eq!(yasecret_core::environment::get(&db, &e2).unwrap().name, "dev");
     }

@@ -1,7 +1,8 @@
 use clap::Args;
 use std::process::{Command, Stdio};
-use yasecret_core::{crypto, environment, project, project_key, secret};
 use zeroize::Zeroizing;
+
+use super::target::Target;
 
 #[derive(Args)]
 pub struct RunArgs {
@@ -20,40 +21,13 @@ pub struct RunArgs {
 }
 
 pub fn run(args: RunArgs) -> yasecret_core::Result<()> {
-    let path = crate::unlock::db_path(args.db.as_deref());
-    let session = crate::unlock::unlock(&path, args.password.as_deref())?;
-
-    let projects = project::list(&session.db)?;
-    let proj = projects
-        .iter()
-        .find(|p| p.name == args.project)
-        .ok_or_else(|| {
-            yasecret_core::YasecretError::NotFound(format!("project '{}'", args.project))
-        })?;
-
-    let envs = environment::list(&session.db, &proj.id)?;
-    let env = envs
-        .iter()
-        .find(|e| e.name == args.env)
-        .ok_or_else(|| {
-            yasecret_core::YasecretError::NotFound(format!("environment '{}'", args.env))
-        })?;
-
-    let proj_key = project_key::load(&session.db, &proj.id, &session.db_key)?;
-    let all_secrets = secret::list(&session.db, &env.id)?;
-
-    let mut env_vars: Vec<(String, Zeroizing<Vec<u8>>)> = vec![];
-    for s in &all_secrets {
-        if args.only.is_empty() || args.only.contains(&s.key) {
-            let nonce: [u8; 12] = s
-                .nonce
-                .clone()
-                .try_into()
-                .map_err(|_| yasecret_core::YasecretError::Crypto)?;
-            let value = crypto::decrypt(&s.encrypted_value, &nonce, &proj_key)?;
-            env_vars.push((s.key.clone(), value));
-        }
-    }
+    let mut t = Target::open(&args.project, &args.env, args.db.as_deref(), args.password.as_deref())?;
+    let env_vars: Vec<(String, Zeroizing<Vec<u8>>)> = t
+        .pairs()?
+        .into_iter()
+        .filter(|(k, _)| args.only.is_empty() || args.only.contains(k))
+        .map(|(k, v)| (k, Zeroizing::new(v.into_bytes())))
+        .collect();
 
     let secret_values: Vec<String> = env_vars
         .iter()

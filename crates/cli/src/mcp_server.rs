@@ -99,16 +99,21 @@ impl YasecretServer {
             Ok(d) => d,
             Err(e) => return format!("error: {e}"),
         };
-        let (_proj, env) = match self.resolve_project_env(&db, project_name, env_name) {
+        let vars = match self.resolved_vars(&db, project_name, env_name) {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let secrets = match yasecret_core::secret::list(&db, &env.id) {
-            Ok(s) => s,
-            Err(e) => return format!("error: {e}"),
-        };
-        let keys: Vec<String> = secrets.iter().map(|s| format!("\"{}\"", s.key)).collect();
+        let keys: Vec<String> = vars.iter().map(|v| format!("\"{}\"", v.key)).collect();
         format!("[{}]", keys.join(","))
+    }
+
+    /// The environment's variables as tools see them: inherited ones included, `${KEY}`
+    /// references expanded.
+    fn resolved_vars(&self, db: &Db, project_name: &str, env_name: &str) -> Result<Vec<yasecret_core::resolve::ResolvedVar>, String> {
+        let db_key = self.open_db_key().map_err(|e| format!("error: {e}"))?;
+        let (proj, env) = self.resolve_project_env(db, project_name, env_name)?;
+        let proj_key = yasecret_core::project_key::load(db, &proj.id, &db_key).map_err(|e| format!("error loading project key: {e}"))?;
+        yasecret_core::resolve::resolved(db, &env.id, &proj_key).map_err(|e| format!("error: {e}"))
     }
 
     pub fn run_with_secrets_impl(
@@ -128,36 +133,14 @@ impl YasecretServer {
             Ok(d) => d,
             Err(e) => return format!("error: {e}"),
         };
-        let db_key = match self.open_db_key() {
-            Ok(k) => k,
-            Err(e) => return format!("error: {e}"),
-        };
-        let (proj, env) = match self.resolve_project_env(&db, project_name, env_name) {
-            Ok(v) => v,
+        let env_vars: Vec<(String, Zeroizing<Vec<u8>>)> = match self.resolved_vars(&db, project_name, env_name) {
+            Ok(vars) => vars
+                .into_iter()
+                .filter(|v| keys.is_empty() || keys.contains(&v.key))
+                .map(|v| (v.key, Zeroizing::new(v.value.into_bytes())))
+                .collect(),
             Err(e) => return e,
         };
-        let proj_key = match yasecret_core::project_key::load(&db, &proj.id, &db_key) {
-            Ok(k) => k,
-            Err(e) => return format!("error loading project key: {e}"),
-        };
-        let all_secrets = match yasecret_core::secret::list(&db, &env.id) {
-            Ok(s) => s,
-            Err(e) => return format!("error: {e}"),
-        };
-
-        let mut env_vars: Vec<(String, Zeroizing<Vec<u8>>)> = vec![];
-        for s in &all_secrets {
-            if keys.is_empty() || keys.contains(&s.key) {
-                let nonce: [u8; 12] = match s.nonce.clone().try_into() {
-                    Ok(n) => n,
-                    Err(_) => return format!("error: corrupt nonce for key '{}'", s.key),
-                };
-                match yasecret_core::crypto::decrypt(&s.encrypted_value, &nonce, &proj_key) {
-                    Ok(v) => env_vars.push((s.key.clone(), v)),
-                    Err(e) => return format!("error decrypting '{}': {e}", s.key),
-                }
-            }
-        }
 
         let secret_values: Vec<String> = env_vars
             .iter()
@@ -191,33 +174,12 @@ impl YasecretServer {
             Ok(d) => d,
             Err(e) => return format!("error: {e}"),
         };
-        let db_key = match self.open_db_key() {
-            Ok(k) => k,
-            Err(e) => return format!("error: {e}"),
-        };
-        let (proj, env) = match self.resolve_project_env(&db, project_name, env_name) {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-        let proj_key = match yasecret_core::project_key::load(&db, &proj.id, &db_key) {
-            Ok(k) => k,
-            Err(e) => return format!("error: {e}"),
-        };
-        let secrets = match yasecret_core::secret::list(&db, &env.id) {
-            Ok(s) => s,
-            Err(e) => return format!("error: {e}"),
-        };
-        let secret = match secrets.iter().find(|s| s.key == key) {
-            Some(s) => s,
-            None => return format!("error: key '{}' not found", key),
-        };
-        let nonce: [u8; 12] = match secret.nonce.clone().try_into() {
-            Ok(n) => n,
-            Err(_) => return "error: corrupt nonce".to_string(),
-        };
-        match yasecret_core::crypto::decrypt(&secret.encrypted_value, &nonce, &proj_key) {
-            Ok(v) => String::from_utf8_lossy(&v).into_owned(),
-            Err(e) => format!("error decrypting: {e}"),
+        match self.resolved_vars(&db, project_name, env_name) {
+            Ok(vars) => match vars.into_iter().find(|v| v.key == key) {
+                Some(v) => v.value,
+                None => format!("error: key '{}' not found", key),
+            },
+            Err(e) => e,
         }
     }
 

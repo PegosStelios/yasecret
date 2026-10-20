@@ -72,6 +72,22 @@ pub struct FfiEnvironment {
     pub project_id: String,
     pub name: String,
     pub secret_count: u32,
+    /// Environment this one inherits variables from.
+    pub inherits_from: Option<String>,
+}
+
+/// A variable an environment gets from a parent and doesn't override.
+#[derive(Clone, uniffi::Record)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+pub struct FfiInheritedVar {
+    pub key: String,
+    /// Plain variables only; reveal secrets through `secret_id`.
+    pub value: Option<String>,
+    pub is_secret: bool,
+    pub from_env: String,
+    /// The variable in the environment it comes from.
+    pub secret_id: String,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -317,6 +333,45 @@ impl YasecretSession {
         yasecret_core::environment::rename(&db, &env_id, &new_name)?;
         self.touched_env(&db, &env_id);
         Ok(())
+    }
+
+    /// Makes the environment inherit `parent_id`'s variables (same project), or stop with `None`.
+    pub fn set_environment_parent(&self, env_id: String, parent_id: Option<String>) -> Result<(), FfiError> {
+        self.check_write_env(&env_id)?;
+        let db = self.open()?;
+        yasecret_core::environment::set_parent(&db, &env_id, parent_id.as_deref())?;
+        self.touched_env(&db, &env_id);
+        Ok(())
+    }
+
+    /// Variables inherited from parent environments that this environment doesn't override.
+    pub fn list_inherited(&self, env_id: String) -> Result<Vec<FfiInheritedVar>, FfiError> {
+        let db = self.open()?;
+        let own: std::collections::HashSet<String> = yasecret_core::secret::list(&db, &env_id)?.into_iter().map(|s| s.key).collect();
+        let mut out: Vec<FfiInheritedVar> = Vec::new();
+        let mut parent = yasecret_core::environment::get(&db, &env_id)?.inherits_from;
+        let mut seen = std::collections::HashSet::from([env_id.clone()]);
+        while let Some(pid) = parent {
+            if !seen.insert(pid.clone()) {
+                break;
+            }
+            let Ok(env) = yasecret_core::environment::get(&db, &pid) else { break };
+            let pk = yasecret_core::project_key::load(&db, &env.project_id, &self.db_key)?;
+            for s in yasecret_core::secret::list(&db, &env.id)? {
+                if own.contains(&s.key) || out.iter().any(|o| o.key == s.key) {
+                    continue;
+                }
+                let value = if s.is_secret {
+                    None
+                } else {
+                    Some(String::from_utf8_lossy(&yasecret_core::secret::get_plaintext(&db, &s.id, &pk)?).into_owned())
+                };
+                out.push(FfiInheritedVar { key: s.key, value, is_secret: s.is_secret, from_env: env.name.clone(), secret_id: s.id });
+            }
+            parent = env.inherits_from;
+        }
+        out.sort_by(|a, b| a.key.cmp(&b.key));
+        Ok(out)
     }
 
     pub fn delete_environment(&self, env_id: String) -> Result<(), FfiError> {
@@ -680,17 +735,15 @@ impl YasecretSession {
         let db = self.open()?;
         let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
         let wanted: Option<std::collections::HashSet<String>> = keys.map(|k| k.into_iter().collect());
+        // Exports are what the app would run with: inherited variables included,
+        // references expanded.
         let mut items = Vec::new();
-        for s in yasecret_core::secret::list(&db, &env_id)? {
-            if wanted.as_ref().is_some_and(|w| !w.contains(&s.key)) {
+        for v in yasecret_core::resolve::resolved(&db, &env_id, &pk)? {
+            if wanted.as_ref().is_some_and(|w| !w.contains(&v.key)) {
                 continue;
             }
-            let value = if s.is_secret && !include_secret_values {
-                String::new()
-            } else {
-                String::from_utf8_lossy(&yasecret_core::secret::get_plaintext(&db, &s.id, &pk)?).into_owned()
-            };
-            items.push(env_file::ExportItem { key: s.key, value, is_secret: s.is_secret });
+            let value = if v.is_secret && !include_secret_values { String::new() } else { v.value };
+            items.push(env_file::ExportItem { key: v.key, value, is_secret: v.is_secret });
         }
         Ok(env_file::export(&items, fmt, &name)?)
     }
@@ -963,7 +1016,7 @@ fn duplicate_aware(e: yasecret_core::YasecretError) -> FfiError {
 
 fn env_record(db: &Db, e: yasecret_core::models::Environment) -> Result<FfiEnvironment, FfiError> {
     let secret_count = yasecret_core::environment::secret_count(db, &e.id)?;
-    Ok(FfiEnvironment { id: e.id, project_id: e.project_id, name: e.name, secret_count })
+    Ok(FfiEnvironment { id: e.id, project_id: e.project_id, name: e.name, secret_count, inherits_from: e.inherits_from })
 }
 
 impl YasecretSession {
@@ -1281,6 +1334,29 @@ mod tests {
         assert_eq!(sum.added, 1);
         let id = session.list_secrets(e).unwrap()[0].id.clone();
         assert_eq!(session.get_secret_plaintext(p, id).unwrap(), "2");
+    }
+
+    #[test]
+    fn inherited_variables_are_listed_and_exported_resolved() {
+        let dir = tempdir().unwrap();
+        let session = make_session(&dir);
+        let (p, dev) = proj_env(&session);
+        session.create_secret(p.clone(), dev.clone(), "HOST".into(), "db.local".into(), None, false).unwrap();
+        session.create_secret(p.clone(), dev.clone(), "TOKEN".into(), "t0k".into(), None, true).unwrap();
+        let staging = session.create_environment(p.clone(), "staging".into()).unwrap().id;
+        session.set_environment_parent(staging.clone(), Some(dev.clone())).unwrap();
+        session.create_secret(p.clone(), staging.clone(), "URL".into(), "pg://${HOST}".into(), None, false).unwrap();
+
+        let inherited = session.list_inherited(staging.clone()).unwrap();
+        let keys: Vec<&str> = inherited.iter().map(|v| v.key.as_str()).collect();
+        assert_eq!(keys, vec!["HOST", "TOKEN"]);
+        assert_eq!(inherited[0].value.as_deref(), Some("db.local"));
+        assert_eq!(inherited[1].value, None, "secret values need a reveal");
+        assert_eq!(inherited[1].from_env, "dev");
+        assert!(session.list_environments(p.clone()).unwrap().iter().any(|e| e.id == staging && e.inherits_from.as_deref() == Some(dev.as_str())));
+
+        let text = session.export_variables(p, staging, "dotenv".into(), None, true, "staging".into()).unwrap();
+        assert!(text.contains("URL=pg://db.local") && text.contains("TOKEN=t0k"), "{text}");
     }
 
     #[test]

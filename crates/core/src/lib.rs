@@ -9,6 +9,7 @@ pub mod identity;
 pub mod models;
 pub mod project;
 pub mod project_key;
+pub mod resolve;
 pub mod role;
 pub mod secret;
 pub mod tombstone;

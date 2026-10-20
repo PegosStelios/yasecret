@@ -26,6 +26,8 @@ pub struct Environment {
     pub name: String,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Environment whose variables this one inherits (its own variables win).
+    pub inherits_from: Option<String>,
 }
 
 #[derive(Debug, Clone)]
