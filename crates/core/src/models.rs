@@ -42,6 +42,8 @@ pub struct Secret {
     pub created_by: String,
     pub expires_at: Option<i64>,
     pub is_secret: bool,
+    /// One of `vartype::TYPES`; `None` is plain text.
+    pub value_type: Option<String>,
 }
 
 #[derive(Debug, Clone)]

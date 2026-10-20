@@ -13,6 +13,7 @@ pub mod resolve;
 pub mod role;
 pub mod secret;
 pub mod tombstone;
+pub mod vartype;
 pub mod vault;
 pub mod version;
 

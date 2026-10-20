@@ -304,6 +304,15 @@ struct SecretListView: View {
                         .help(s.isSecret ? "Secret" : "Plain variable")
                     Text(s.key)
                         .font(.system(.body, design: .monospaced))
+                    if let t = s.valueType {
+                        Text(t)
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(.quaternary, in: Capsule())
+                            .foregroundStyle(.secondary)
+                            .help("Values must be \(t == "url" ? "a URL" : t)")
+                    }
                     if let badge = expiryBadge(s) {
                         Text(badge.text)
                             .font(.caption2.weight(.semibold))

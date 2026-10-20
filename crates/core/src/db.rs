@@ -158,6 +158,8 @@ impl Db {
         self.add_column("sync_doc", "my_level", "TEXT")?;
         // Environment this one inherits variables from (same project), if any.
         self.add_column("environment", "inherits_from", "TEXT")?;
+        // Optional type checked whenever the value changes (see vartype).
+        self.add_column("secret", "value_type", "TEXT")?;
         self.conn.execute_batch("
             CREATE TABLE IF NOT EXISTS tombstone (
                 id         TEXT PRIMARY KEY,

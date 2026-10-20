@@ -466,6 +466,11 @@ void uniffi_yasecret_ffi_fn_method_yasecretsession_set_expiry(void*_Nonnull ptr,
 void uniffi_yasecret_ffi_fn_method_yasecretsession_set_member_level(void*_Nonnull ptr, RustBuffer project_id, RustBuffer peer_id, RustBuffer level, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_SET_VALUE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_SET_VALUE_TYPE
+void uniffi_yasecret_ffi_fn_method_yasecretsession_set_value_type(void*_Nonnull ptr, RustBuffer project_id, RustBuffer secret_id, RustBuffer value_type, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_SHARED_PROJECT_IDS
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_METHOD_YASECRETSESSION_SHARED_PROJECT_IDS
 RustBuffer uniffi_yasecret_ffi_fn_method_yasecretsession_shared_project_ids(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -530,6 +535,16 @@ void uniffi_yasecret_ffi_fn_func_recover_vault(RustBuffer db_path, RustBuffer re
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_RESTORE_VAULT_BACKUP
 void uniffi_yasecret_ffi_fn_func_restore_vault_backup(RustBuffer backup_path, RustBuffer db_path, RustBuffer password, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_SUGGEST_VALUE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_SUGGEST_VALUE_TYPE
+RustBuffer uniffi_yasecret_ffi_fn_func_suggest_value_type(RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_VALUE_TYPE_PROBLEM
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_VALUE_TYPE_PROBLEM
+RustBuffer uniffi_yasecret_ffi_fn_func_value_type_problem(RustBuffer value_type, RustBuffer value, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_FN_FUNC_VAULT_HAS_RECOVERY_KEY
@@ -853,6 +868,18 @@ uint16_t uniffi_yasecret_ffi_checksum_func_restore_vault_backup(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_SUGGEST_VALUE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_SUGGEST_VALUE_TYPE
+uint16_t uniffi_yasecret_ffi_checksum_func_suggest_value_type(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VALUE_TYPE_PROBLEM
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VALUE_TYPE_PROBLEM
+uint16_t uniffi_yasecret_ffi_checksum_func_value_type_problem(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VAULT_HAS_RECOVERY_KEY
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_FUNC_VAULT_HAS_RECOVERY_KEY
 uint16_t uniffi_yasecret_ffi_checksum_func_vault_has_recovery_key(void
@@ -1096,6 +1123,12 @@ uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_set_expiry(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_SET_MEMBER_LEVEL
 #define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_SET_MEMBER_LEVEL
 uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_SET_VALUE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_YASECRET_FFI_CHECKSUM_METHOD_YASECRETSESSION_SET_VALUE_TYPE
+uint16_t uniffi_yasecret_ffi_checksum_method_yasecretsession_set_value_type(void
     
 );
 #endif

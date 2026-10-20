@@ -79,6 +79,20 @@ final class SecretsViewModel {
         }
     }
 
+    @discardableResult
+    func setValueType(projectId: String, secretId: String, valueType: String?, session: YasecretSession) -> Bool {
+        do {
+            try session.setValueType(projectId: projectId, secretId: secretId, valueType: valueType)
+            if let envId = secrets.first(where: { $0.id == secretId })?.envId {
+                secrets = try session.listSecrets(envId: envId)
+            }
+            return true
+        } catch {
+            errorMessage = userMessage(error)
+            return false
+        }
+    }
+
     func deleteSecret(id: String, session: YasecretSession) {
         do {
             try session.deleteSecret(secretId: id)

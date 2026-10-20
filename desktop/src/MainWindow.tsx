@@ -543,6 +543,7 @@ export default function Main({ onLock, joinLink, onJoinLinkHandled }: { onLock: 
                             <span className="inline-flex max-w-full items-center gap-2">
                               {s.isSecret ? <Lock size={13} className="shrink-0 text-warn" /> : <Type size={13} className="shrink-0 text-faint" />}
                               <span className="truncate font-mono">{s.key}</span>
+                              {s.valueType && <span className="shrink-0 rounded-full bg-raised px-1.5 text-[11px] text-muted" title={`Values must be ${s.valueType}`}>{s.valueType}</span>}
                               {badge && <span className={`shrink-0 rounded-full px-1.5 text-[11px] font-semibold ${badge.cls}`}>{badge.text}</span>}
                             </span>
                           </td>

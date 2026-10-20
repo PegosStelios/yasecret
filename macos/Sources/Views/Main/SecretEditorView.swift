@@ -28,6 +28,19 @@ struct SecretEditorView: View {
     @State private var expires = false
     @State private var expiryDate = Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()
     @State private var originalExpiry: Int64?
+    @State private var valueType: String?
+    @State private var originalType: String?
+    @State private var typeTouched = false
+
+    private static let types: [(tag: String, label: String)] = [
+        ("", "Text"), ("url", "URL"), ("number", "Number"), ("port", "Port"),
+        ("boolean", "Boolean"), ("email", "Email"), ("json", "JSON"),
+    ]
+
+    /// Why the value doesn't fit the chosen type, if it doesn't.
+    private var typeProblem: String? {
+        valueType.flatMap { valueTypeProblem(valueType: $0, value: value) }
+    }
 
     private var existing: FfiSecret? { request.secret }
 
@@ -43,6 +56,7 @@ struct SecretEditorView: View {
                     .font(.system(.body, design: .monospaced))
                     .onChange(of: key) { _, new in
                         if existing == nil && !kindTouched { isSecret = looksSecret(key: new) }
+                        if existing == nil && !typeTouched { valueType = suggestValueType(key: new) }
                     }
                 if !key.isEmpty && !isValidKey(key: key) {
                     Text("Use letters, digits and _ — can't start with a digit or contain spaces")
@@ -73,6 +87,24 @@ struct SecretEditorView: View {
                         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(.separator))
                 }
+                if let typeProblem {
+                    Text("This value isn't valid: \(typeProblem)").font(.caption).foregroundStyle(.red)
+                }
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Type")
+                    Text("Values are checked against it whenever they change.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("Type", selection: Binding(get: { valueType ?? "" }, set: { valueType = $0.isEmpty ? nil : $0; typeTouched = true })) {
+                    ForEach(Self.types, id: \.tag) { Text($0.label).tag($0.tag) }
+                }
+                .labelsHidden()
+                .fixedSize()
             }
 
             HStack {
@@ -109,7 +141,7 @@ struct SecretEditorView: View {
                 Button(existing == nil ? "Add" : "Save", action: save)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
-                    .disabled(!isValidKey(key: key))
+                    .disabled(!isValidKey(key: key) || typeProblem != nil)
             }
         }
         .padding(20)
@@ -125,6 +157,8 @@ struct SecretEditorView: View {
         }
         guard let s = existing else { return }
         key = s.key
+        valueType = s.valueType
+        originalType = s.valueType
         isSecret = s.isSecret
         originalExpiry = s.expiresAt
         if let exp = s.expiresAt {
@@ -143,14 +177,21 @@ struct SecretEditorView: View {
     private func save() {
         let ok: Bool
         let newExpiry: Int64? = expires ? Int64(expiryDate.timeIntervalSince1970) : nil
+        let typeChanged = valueType != originalType
         if let s = existing {
-            ok = vm.editSecret(projectId: projectId, secret: s, newKey: key,
-                               newValue: value == originalValue ? nil : value,
-                               isSecret: isSecret, session: session)
+            // Clear the old type first so a new value is checked against the new type only.
+            ok = (!typeChanged || originalType == nil || vm.setValueType(projectId: projectId, secretId: s.id, valueType: nil, session: session))
+                && vm.editSecret(projectId: projectId, secret: s, newKey: key,
+                                 newValue: value == originalValue ? nil : value,
+                                 isSecret: isSecret, session: session)
                 && (newExpiry == originalExpiry || vm.setExpiry(projectId: projectId, secret: s, expiresAt: newExpiry, session: session))
+                && (!typeChanged || valueType == nil || vm.setValueType(projectId: projectId, secretId: s.id, valueType: valueType, session: session))
         } else {
             ok = vm.createSecret(projectId: projectId, envId: envId, key: key, value: value,
                                  isSecret: isSecret, expiresAt: newExpiry, session: session)
+                && (valueType == nil || vm.secrets.first(where: { $0.key == key }).map {
+                    vm.setValueType(projectId: projectId, secretId: $0.id, valueType: valueType, session: session)
+                } ?? true)
         }
         if ok {
             onSaved()

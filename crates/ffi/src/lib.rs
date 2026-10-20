@@ -43,6 +43,7 @@ impl From<yasecret_core::error::YasecretError> for FfiError {
             E::PermissionDenied    => FfiError::PermissionDenied,
             E::ReadOnly(_)         => FfiError::PermissionDenied,
             E::InvalidRecoveryKey  => FfiError::Parse { msg: e.to_string() },
+            E::InvalidValue(msg)   => FfiError::Parse { msg },
             E::Crypto              => FfiError::Crypto,
             E::NotFound(m)         => FfiError::NotFound { msg: m },
             E::Db(e)               => FfiError::Db { msg: e.to_string() },
@@ -100,6 +101,8 @@ pub struct FfiSecret {
     pub expires_at: Option<i64>,
     pub is_secret: bool,
     pub updated_at: i64,
+    /// "url", "number", "port", "boolean", "email" or "json"; none means plain text.
+    pub value_type: Option<String>,
 }
 
 impl From<yasecret_core::models::Secret> for FfiSecret {
@@ -111,6 +114,7 @@ impl From<yasecret_core::models::Secret> for FfiSecret {
             expires_at: s.expires_at,
             is_secret: s.is_secret,
             updated_at: s.updated_at,
+            value_type: s.value_type,
         }
     }
 }
@@ -748,6 +752,16 @@ impl YasecretSession {
         Ok(env_file::export(&items, fmt, &name)?)
     }
 
+    /// Sets or clears the variable's type; its current value has to fit.
+    pub fn set_value_type(&self, project_id: String, secret_id: String, value_type: Option<String>) -> Result<(), FfiError> {
+        self.check_write(&project_id, false)?;
+        let db = self.open()?;
+        let pk = yasecret_core::project_key::load(&db, &project_id, &self.db_key)?;
+        yasecret_core::secret::set_value_type(&db, &secret_id, value_type.as_deref(), &pk)?;
+        self.touched(&project_id);
+        Ok(())
+    }
+
     pub fn set_expiry(&self, project_id: String, secret_id: String, expires_at: Option<i64>) -> Result<(), FfiError> {
         self.check_write(&project_id, false)?;
         let db = self.open()?;
@@ -967,6 +981,18 @@ pub fn restore_vault_backup(backup_path: String, db_path: String, password: Stri
 #[uniffi::export]
 pub fn vault_has_recovery_key(db_path: String) -> bool {
     yasecret_core::vault::has_recovery_key(Path::new(&db_path))
+}
+
+/// A likely type for a variable name ("url", "port", …), or none.
+#[uniffi::export]
+pub fn suggest_value_type(key: String) -> Option<String> {
+    yasecret_core::vartype::suggest(&key).map(String::from)
+}
+
+/// Checks a value against a type before saving; returns why it doesn't fit, or none.
+#[uniffi::export]
+pub fn value_type_problem(value_type: String, value: String) -> Option<String> {
+    yasecret_core::vartype::check(&value_type, &value).err().map(|e| e.to_string())
 }
 
 #[uniffi::export]

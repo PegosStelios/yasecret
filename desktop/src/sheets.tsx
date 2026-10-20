@@ -105,6 +105,9 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
   const [original, setOriginal] = useState("");
   const [isSecret, setIsSecret] = useState(secret?.isSecret ?? prefill?.isSecret ?? true);
   const [kindTouched, setKindTouched] = useState(!!prefill);
+  const [valueType, setValueType] = useState<string | null>(secret?.valueType ?? null);
+  const [typeTouched, setTypeTouched] = useState(false);
+  const [typeProblem, setTypeProblem] = useState<string | null>(null);
   const [show, setShow] = useState(false);
   const [expires, setExpires] = useState(secret?.expiresAt != null);
   const [expiry, setExpiry] = useState(toDateInput(secret?.expiresAt ?? Date.now() / 1000 + 90 * 86400));
@@ -118,11 +121,18 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
     if (!key) { setValidKey(true); return; }
     api.isValidKey(key).then(setValidKey);
     if (!secret && !kindTouched) api.looksSecret(key).then(setIsSecret);
-  }, [key, secret, kindTouched]);
+    if (!secret && !typeTouched) api.suggestValueType(key).then(setValueType);
+  }, [key, secret, kindTouched, typeTouched]);
+  useEffect(() => {
+    let current = true;
+    if (!valueType) setTypeProblem(null);
+    else api.valueTypeProblem(valueType, value).then((p) => current && setTypeProblem(p));
+    return () => { current = false; };
+  }, [valueType, value]);
 
   const [busy, setBusy] = useState(false);
   const save = async () => {
-    if (busy || !key || !validKey) return;
+    if (busy || !key || !validKey || typeProblem) return;
     setBusy(true);
     setError(null);
     // Compare by calendar day: re-saving an unchanged date must not rewrite the expiry.
@@ -130,7 +140,10 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
     const expiryChanged = (expires ? expiry : null) !== originalDay;
     const newExpiry = expires ? (expiryChanged ? fromDateInput(expiry) : secret?.expiresAt ?? fromDateInput(expiry)) : null;
     try {
+      const typeChanged = valueType !== (secret?.valueType ?? null);
       if (secret) {
+        // Clear the old type first so a new value is checked against the new type only.
+        if (typeChanged && secret.valueType) await api.setValueType(projectId, secret.id, null);
         await api.editSecret({
           projectId,
           secretId: secret.id,
@@ -140,8 +153,10 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
           expiryChanged,
           expiresAt: newExpiry,
         });
+        if (typeChanged && valueType) await api.setValueType(projectId, secret.id, valueType);
       } else {
-        await api.createSecret({ projectId, envId, key, value, isSecret, expiresAt: newExpiry });
+        const created = await api.createSecret({ projectId, envId, key, value, isSecret, expiresAt: newExpiry });
+        if (valueType) await api.setValueType(projectId, created.id, valueType);
       }
       await onSaved();
       onClose();
@@ -159,7 +174,7 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
       onClose={onClose}
       width={SHEET.medium}
       onEnter={save}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!key || !validKey || busy} onClick={save}>{secret ? "Save" : "Add"}</Button></>}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!key || !validKey || !!typeProblem || busy} onClick={save}>{secret ? "Save" : "Add"}</Button></>}
     >
       <label className="mb-1 block text-xs text-muted">Key</label>
       <TextInput mono autoFocus placeholder="API_KEY" value={key} onChange={(e) => setKey(e.target.value)} />
@@ -182,7 +197,25 @@ export function VariableEditor({ projectId, envId, secret, prefill, onSaved, onC
         />
       )}
 
+      {typeProblem && <p className="mt-1 text-xs text-danger">This value isn't valid: {typeProblem}</p>}
+
       <div className="mt-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div>Type</div>
+            <div className="text-xs text-muted">Values are checked against it whenever they change.</div>
+          </div>
+          <select
+            value={valueType ?? ""}
+            aria-label="Type"
+            onChange={(e) => { setValueType(e.target.value || null); setTypeTouched(true); }}
+            className="h-7 rounded-md border border-line bg-field px-2"
+          >
+            {[["", "Text"], ["url", "URL"], ["number", "Number"], ["port", "Port"], ["boolean", "Boolean"], ["email", "Email"], ["json", "JSON"]].map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+        </div>
         <Toggle
           checked={isSecret}
           onChange={(v) => { setIsSecret(v); setKindTouched(true); }}

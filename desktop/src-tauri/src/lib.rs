@@ -441,6 +441,21 @@ async fn get_value(vault: State<'_, Vault>, project_id: String, secret_id: Strin
 }
 
 #[tauri::command]
+async fn set_value_type(vault: State<'_, Vault>, project_id: String, secret_id: String, value_type: Option<String>) -> CmdResult<()> {
+    blocking(&vault, move |s| s.set_value_type(project_id, secret_id, value_type)).await
+}
+
+#[tauri::command]
+fn suggest_value_type(key: String) -> Option<String> {
+    yasecret_ffi::suggest_value_type(key)
+}
+
+#[tauri::command]
+fn value_type_problem(value_type: String, value: String) -> Option<String> {
+    yasecret_ffi::value_type_problem(value_type, value)
+}
+
+#[tauri::command]
 fn looks_secret(key: String) -> bool {
     yasecret_ffi::looks_secret(key)
 }
@@ -724,6 +739,9 @@ pub fn run() {
             list_environments,
             create_environment,
             rename_environment,
+            set_value_type,
+            suggest_value_type,
+            value_type_problem,
             set_environment_parent,
             list_inherited,
             clone_environment,

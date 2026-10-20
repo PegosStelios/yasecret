@@ -41,6 +41,10 @@ Tagged versions are published on the [Releases](../../releases) page: a Windows 
 
 **Cutting a release:** bump `version` in `desktop/src-tauri/tauri.conf.json`, then push a matching tag (`git tag v0.2.0 && git push origin v0.2.0`). The [Release](.github/workflows/release.yml) workflow builds both apps into a draft release; publishing the draft makes the update available. It needs the `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets; the Mac app is signed with the certificate in `APPLE_CERTIFICATE` / `APPLE_CERTIFICATE_PASSWORD` / `APPLE_SIGNING_IDENTITY`. Replacing that with a Developer ID certificate and adding `APPLE_ID`, `APPLE_APP_PASSWORD` and `APPLE_TEAM_ID` also notarizes it (users will need to allow Keychain access once after that switch).
 
+## Typed variables
+
+Give a variable a type (URL, number, port, boolean, email or JSON) in its editor; Yasecret suggests one from the name (`*_URL`, `*_PORT`, `ENABLE_*`…). Every change is checked against it: in the apps, on `yasecret push` (a push with a value that doesn't fit is refused as a whole) and on MCP imports. Types sync with the variable.
+
 ## Inheritance and references
 
 An environment can **inherit** another's variables (right-click it → *Inherit From*, or `yasecret inherit -p app -e staging --from development`). Its own variables win, so staging only needs the values that differ. Inherited variables show under the environment's own, with *Override* to give it its own value.

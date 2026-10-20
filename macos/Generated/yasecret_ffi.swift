@@ -638,6 +638,11 @@ public protocol YasecretSessionProtocol : AnyObject {
     func setMemberLevel(projectId: String, peerId: String, level: String) throws 
     
     /**
+     * Sets or clears the variable's type; its current value has to fit.
+     */
+    func setValueType(projectId: String, secretId: String, valueType: String?) throws 
+    
+    /**
      * Ids of projects that are shared with other devices (one cheap query, no network).
      */
     func sharedProjectIds() throws  -> [String]
@@ -1106,6 +1111,18 @@ open func setMemberLevel(projectId: String, peerId: String, level: String)throws
         FfiConverterString.lower(projectId),
         FfiConverterString.lower(peerId),
         FfiConverterString.lower(level),$0
+    )
+}
+}
+    
+    /**
+     * Sets or clears the variable's type; its current value has to fit.
+     */
+open func setValueType(projectId: String, secretId: String, valueType: String?)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_yasecret_ffi_fn_method_yasecretsession_set_value_type(self.uniffiClonePointer(),
+        FfiConverterString.lower(projectId),
+        FfiConverterString.lower(secretId),
+        FfiConverterOptionString.lower(valueType),$0
     )
 }
 }
@@ -2128,16 +2145,24 @@ public struct FfiSecret {
     public var expiresAt: Int64?
     public var isSecret: Bool
     public var updatedAt: Int64
+    /**
+     * "url", "number", "port", "boolean", "email" or "json"; none means plain text.
+     */
+    public var valueType: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, envId: String, key: String, expiresAt: Int64?, isSecret: Bool, updatedAt: Int64) {
+    public init(id: String, envId: String, key: String, expiresAt: Int64?, isSecret: Bool, updatedAt: Int64, 
+        /**
+         * "url", "number", "port", "boolean", "email" or "json"; none means plain text.
+         */valueType: String?) {
         self.id = id
         self.envId = envId
         self.key = key
         self.expiresAt = expiresAt
         self.isSecret = isSecret
         self.updatedAt = updatedAt
+        self.valueType = valueType
     }
 }
 
@@ -2163,6 +2188,9 @@ extension FfiSecret: Equatable, Hashable {
         if lhs.updatedAt != rhs.updatedAt {
             return false
         }
+        if lhs.valueType != rhs.valueType {
+            return false
+        }
         return true
     }
 
@@ -2173,6 +2201,7 @@ extension FfiSecret: Equatable, Hashable {
         hasher.combine(expiresAt)
         hasher.combine(isSecret)
         hasher.combine(updatedAt)
+        hasher.combine(valueType)
     }
 }
 
@@ -2189,7 +2218,8 @@ public struct FfiConverterTypeFfiSecret: FfiConverterRustBuffer {
                 key: FfiConverterString.read(from: &buf), 
                 expiresAt: FfiConverterOptionInt64.read(from: &buf), 
                 isSecret: FfiConverterBool.read(from: &buf), 
-                updatedAt: FfiConverterInt64.read(from: &buf)
+                updatedAt: FfiConverterInt64.read(from: &buf), 
+                valueType: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -2200,6 +2230,7 @@ public struct FfiConverterTypeFfiSecret: FfiConverterRustBuffer {
         FfiConverterOptionInt64.write(value.expiresAt, into: &buf)
         FfiConverterBool.write(value.isSecret, into: &buf)
         FfiConverterInt64.write(value.updatedAt, into: &buf)
+        FfiConverterOptionString.write(value.valueType, into: &buf)
     }
 }
 
@@ -2988,6 +3019,27 @@ public func restoreVaultBackup(backupPath: String, dbPath: String, password: Str
     )
 }
 }
+/**
+ * A likely type for a variable name ("url", "port", …), or none.
+ */
+public func suggestValueType(key: String) -> String? {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_suggest_value_type(
+        FfiConverterString.lower(key),$0
+    )
+})
+}
+/**
+ * Checks a value against a type before saving; returns why it doesn't fit, or none.
+ */
+public func valueTypeProblem(valueType: String, value: String) -> String? {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_yasecret_ffi_fn_func_value_type_problem(
+        FfiConverterString.lower(valueType),
+        FfiConverterString.lower(value),$0
+    )
+})
+}
 public func vaultHasRecoveryKey(dbPath: String) -> Bool {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_yasecret_ffi_fn_func_vault_has_recovery_key(
@@ -3027,6 +3079,12 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_func_restore_vault_backup() != 16779) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_suggest_value_type() != 52395) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_func_value_type_problem() != 2107) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_func_vault_has_recovery_key() != 1147) {
@@ -3150,6 +3208,9 @@ private var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_member_level() != 3476) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_yasecret_ffi_checksum_method_yasecretsession_set_value_type() != 4728) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_yasecret_ffi_checksum_method_yasecretsession_shared_project_ids() != 53374) {

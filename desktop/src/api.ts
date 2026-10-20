@@ -4,7 +4,7 @@ export type Project = { id: string; name: string; description: string | null };
 export type Environment = { id: string; projectId: string; name: string; secretCount: number; inheritsFrom: string | null };
 /** A variable an environment gets from a parent and doesn't override. */
 export type InheritedVar = { key: string; value: string | null; isSecret: boolean; fromEnv: string; secretId: string };
-export type Secret = { id: string; envId: string; key: string; expiresAt: number | null; isSecret: boolean; updatedAt: number };
+export type Secret = { id: string; envId: string; key: string; expiresAt: number | null; isSecret: boolean; updatedAt: number; valueType: string | null };
 export type ImportRow = { key: string; value: string; exists: boolean; suggestedSecret: boolean };
 export type ImportItem = { key: string; value: string; isSecret: boolean };
 export type ImportSummary = { added: number; updated: number; skipped: number };
@@ -59,6 +59,10 @@ export const api = {
   listEnvironments: (projectId: string) => invoke<Environment[]>("list_environments", { projectId }),
   createEnvironment: (projectId: string, name: string) => invoke<Environment>("create_environment", { projectId, name }),
   renameEnvironment: (envId: string, name: string) => invoke<void>("rename_environment", { envId, name }),
+  setValueType: (projectId: string, secretId: string, valueType: string | null) => invoke<void>("set_value_type", { projectId, secretId, valueType }),
+  suggestValueType: (key: string) => invoke<string | null>("suggest_value_type", { key }),
+  /** Why `value` doesn't fit `valueType`, or null. */
+  valueTypeProblem: (valueType: string, value: string) => invoke<string | null>("value_type_problem", { valueType, value }),
   setEnvironmentParent: (envId: string, parentId: string | null) => invoke<void>("set_environment_parent", { envId, parentId }),
   listInherited: (envId: string) => invoke<InheritedVar[]>("list_inherited", { envId }),
   cloneEnvironment: (envId: string, name: string) => invoke<Environment>("clone_environment", { envId, name }),

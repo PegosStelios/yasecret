@@ -43,6 +43,7 @@ pub fn create_with_kind(
         created_by: caller_id.to_string(),
         expires_at,
         is_secret,
+        value_type: None,
     };
     db.conn().execute(
         "INSERT INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
@@ -84,7 +85,7 @@ pub fn get_plaintext(db: &Db, secret_id: &str, project_key: &[u8; 32]) -> Result
 
 pub fn list(db: &Db, env_id: &str) -> Result<Vec<Secret>> {
     let mut stmt = db.conn().prepare(
-        "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret FROM secret WHERE env_id=?1 ORDER BY key",
+        "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret,value_type FROM secret WHERE env_id=?1 ORDER BY key",
     )?;
     let rows = stmt.query_map([env_id], |r| {
         Ok(Secret {
@@ -98,6 +99,7 @@ pub fn list(db: &Db, env_id: &str) -> Result<Vec<Secret>> {
             created_by: r.get(7)?,
             expires_at: r.get(8)?,
             is_secret: r.get(9)?,
+            value_type: r.get(10)?,
         })
     })?;
     rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
@@ -112,6 +114,9 @@ pub fn update(
     note: Option<&str>,
 ) -> Result<Secret> {
     let old = get_raw(db, secret_id)?;
+    if let Some(t) = &old.value_type {
+        crate::vartype::check(t, &String::from_utf8_lossy(new_plaintext)).map_err(|e| typed_error(&old.key, e))?;
+    }
     // Archive current value as a version
     db.conn().execute(
         "INSERT INTO secret_version (id,secret_id,encrypted_value,nonce,changed_by,changed_at,note) VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -184,7 +189,7 @@ pub fn delete(db: &Db, secret_id: &str, caller_id: &str) -> Result<()> {
 pub(crate) fn get_raw(db: &Db, id: &str) -> Result<Secret> {
     db.conn()
         .query_row(
-            "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret FROM secret WHERE id=?1",
+            "SELECT id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret,value_type FROM secret WHERE id=?1",
             [id],
             |r| {
                 Ok(Secret {
@@ -198,6 +203,7 @@ pub(crate) fn get_raw(db: &Db, id: &str) -> Result<Secret> {
                     created_by: r.get(7)?,
                     expires_at: r.get(8)?,
                     is_secret: r.get(9)?,
+                    value_type: r.get(10)?,
                 })
             },
         )
@@ -237,9 +243,25 @@ pub fn merge(
         incoming.push((k, v));
     }
     let mut current = std::collections::HashMap::new();
+    let mut types = std::collections::HashMap::new();
     for s in list(db, env_id)? {
         let v = get_plaintext(db, &s.id, project_key)?;
+        if let Some(t) = s.value_type {
+            types.insert(s.key.clone(), t);
+        }
         current.insert(s.key, (s.id, v.to_vec()));
+    }
+    // Refuse the whole merge if a value that would be written doesn't fit its variable's type.
+    let invalid: Vec<String> = incoming
+        .iter()
+        .filter(|(k, v)| overwrite && current.get(*k).is_some_and(|(_, old)| old.as_slice() != v.as_bytes()))
+        .filter_map(|(k, v)| {
+            let t = types.get(*k)?;
+            crate::vartype::check(t, v).err().map(|_| format!("{k} (expected {})", crate::vartype::label(t)))
+        })
+        .collect();
+    if !invalid.is_empty() {
+        return Err(crate::error::YasecretError::InvalidValue(format!("values don't fit their type: {}", invalid.join(", "))));
     }
 
     let mut report = MergeReport::default();
@@ -264,4 +286,25 @@ pub fn merge(
     }
     tx.commit()?;
     Ok(report)
+}
+
+fn typed_error(key: &str, e: crate::error::YasecretError) -> crate::error::YasecretError {
+    match e {
+        crate::error::YasecretError::InvalidValue(msg) => crate::error::YasecretError::InvalidValue(format!("{key}: {msg}")),
+        other => other,
+    }
+}
+
+/// Sets or clears a variable's type; the current value has to fit the new type.
+pub fn set_value_type(db: &Db, secret_id: &str, value_type: Option<&str>, project_key: &[u8; 32]) -> Result<()> {
+    let s = get_raw(db, secret_id)?;
+    if let Some(t) = value_type {
+        let value = get_plaintext(db, secret_id, project_key)?;
+        crate::vartype::check(t, &String::from_utf8_lossy(&value)).map_err(|e| typed_error(&s.key, e))?;
+    }
+    db.conn().execute(
+        "UPDATE secret SET value_type = ?1, updated_at = MAX(?2, updated_at + 1) WHERE id = ?3",
+        rusqlite::params![value_type, now(), secret_id],
+    )?;
+    Ok(())
 }

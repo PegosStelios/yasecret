@@ -79,6 +79,8 @@ pub struct WSecret {
     pub created_by: String,
     pub expires_at: Option<i64>,
     pub deleted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1645,6 +1647,7 @@ fn plan_reconcile(
                 created_by: l.created_by,
                 expires_at: l.expires_at,
                 deleted: false,
+                value_type: l.value_type,
             });
         }
     }
@@ -1661,6 +1664,7 @@ fn plan_reconcile(
             created_by: inner.my_peer.clone(),
             expires_at: None,
             deleted: true,
+            value_type: None,
         });
     }
     let ids: HashSet<&String> = remote_secrets.keys().chain(local_secrets.keys()).collect();
@@ -1803,13 +1807,13 @@ fn apply_remote_secret(db: &Db, project_id: &str, r: &WSecret, local: Option<&WS
         }
         db.conn().execute(
             "UPDATE secret SET env_id=?1, key=?2, encrypted_value=?3, nonce=?4, is_secret=?5, created_at=?6, updated_at=?7,
-                               created_by=?8, expires_at=?9 WHERE id=?10",
-            rusqlite::params![&r.env_id, &r.key, &r.enc, &r.nonce, r.is_secret, r.created_at, r.updated_at, &r.created_by, r.expires_at, &r.id],
+                               created_by=?8, expires_at=?9, value_type=?11 WHERE id=?10",
+            rusqlite::params![&r.env_id, &r.key, &r.enc, &r.nonce, r.is_secret, r.created_at, r.updated_at, &r.created_by, r.expires_at, &r.id, &r.value_type],
         )?;
     } else {
         let inserted = db.conn().execute(
-            "INSERT OR IGNORE INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            rusqlite::params![&r.id, &r.env_id, &r.key, &r.enc, &r.nonce, r.created_at, r.updated_at, &r.created_by, r.expires_at, r.is_secret],
+            "INSERT OR IGNORE INTO secret (id,env_id,key,encrypted_value,nonce,created_at,updated_at,created_by,expires_at,is_secret,value_type) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            rusqlite::params![&r.id, &r.env_id, &r.key, &r.enc, &r.nonce, r.created_at, r.updated_at, &r.created_by, r.expires_at, r.is_secret, &r.value_type],
         )?;
         if inserted == 0 {
             // The id already exists elsewhere (another project); never touch it from here.
@@ -1953,7 +1957,7 @@ mod tests {
     fn wsecret(id: &str, env: &str, key: &str, ts: i64, val: u8) -> WSecret {
         WSecret {
             id: id.into(), env_id: env.into(), key: key.into(), enc: vec![val], nonce: vec![0; 12],
-            is_secret: true, created_at: 1, updated_at: ts, created_by: "x".into(), expires_at: None, deleted: false,
+            is_secret: true, created_at: 1, updated_at: ts, created_by: "x".into(), expires_at: None, deleted: false, value_type: None,
         }
     }
 
