@@ -1,0 +1,71 @@
+name: YasecretMobile
+options:
+  bundleIdPrefix: com.yasecret
+  deploymentTarget:
+    iOS: "17.0"
+
+targets:
+  YasecretMobile:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+      - path: Generated
+      - path: ../macos/Sources/Services/KeychainService.swift
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Yasecret
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        NSFaceIDUsageDescription: "Unlock your vault with Face ID"
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          - CFBundleURLName: com.yasecret.join
+            CFBundleURLSchemes: [yasecret]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yasecret.mobile
+        PRODUCT_NAME: Yasecret
+        SWIFT_VERSION: "5.9"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/Sources/BridgingHeader.h"
+        SWIFT_INCLUDE_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Generated"
+        # Apple silicon simulators only; the Rust library is built for arm64.
+        "EXCLUDED_ARCHS[sdk=iphonesimulator*]": x86_64
+        "OTHER_LDFLAGS[sdk=iphoneos*]":
+          - "$(inherited)"
+          - "$(SRCROOT)/../target/aarch64-apple-ios/$(RUST_PROFILE)/libyasecret_ffi.a"
+          - "-framework"
+          - "Security"
+          - "-framework"
+          - "SystemConfiguration"
+          - "-framework"
+          - "Network"
+          - "-lresolv"
+        "OTHER_LDFLAGS[sdk=iphonesimulator*]":
+          - "$(inherited)"
+          - "$(SRCROOT)/../target/aarch64-apple-ios-sim/$(RUST_PROFILE)/libyasecret_ffi.a"
+          - "-framework"
+          - "Security"
+          - "-framework"
+          - "SystemConfiguration"
+          - "-framework"
+          - "Network"
+          - "-lresolv"
+      configs:
+        Debug:
+          RUST_PROFILE: debug
+        Release:
+          RUST_PROFILE: release
+    preBuildScripts:
+      - name: "Build Rust FFI"
+        script: '"${SRCROOT}/Scripts/build_rust.sh"'
+        # Cargo decides what to rebuild; Xcode must not skip this as "up to date".
+        basedOnDependencyAnalysis: false

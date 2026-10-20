@@ -1,0 +1,54 @@
+name: iOS build
+
+on:
+  push:
+    branches: [main]
+    paths: ["crates/**", "ios/**", "Cargo.lock", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build for the simulator
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -project YasecretMobile.xcodeproj -scheme YasecretMobile -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build for devices (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -project YasecretMobile.xcodeproj -scheme YasecretMobile -sdk iphoneos -configuration Release \
+            -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+
+      # Launches the app in a simulator and keeps a screenshot of the first screen.
+      - name: Smoke test in a simulator
+        working-directory: ios
+        run: |
+          device=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" build/Build/Products/Debug-iphonesimulator/Yasecret.app
+          xcrun simctl launch "$device" com.yasecret.mobile
+          sleep 8
+          xcrun simctl io "$device" screenshot "$RUNNER_TEMP/first-screen.png"
+          xcrun simctl spawn "$device" launchctl list | grep -q com.yasecret.mobile || { echo "::error::the app isn't running"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-first-screen
+          path: ${{ runner.temp }}/first-screen.png
