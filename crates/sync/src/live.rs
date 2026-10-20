@@ -187,6 +187,20 @@ mod keys {
     pub fn invite(id: &str) -> String { format!("v2/invite/{id}") }
     pub fn grant(peer: &str) -> String { format!("v2/grant/{peer}") }
     pub fn relay(code: &str) -> String { format!("v2/relay/{code}") }
+    pub fn activity(id: &str) -> String { format!("v2/activity/{id}") }
+}
+
+/// One activity-log entry, published by the device it happened on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WActivity {
+    pub id: String,
+    pub action: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub timestamp: i64,
+    pub detail: Option<String>,
+    /// Device code of the device it happened on.
+    pub by: String,
 }
 
 // ── Sealed records ────────────────────────────────────────────────────────────
@@ -196,7 +210,11 @@ mod keys {
 // handoffs and relay records stay readable: they're what a device needs before it has the key.
 
 fn is_sealed_key(key: &str) -> bool {
-    key == keys::PROJECT || key.starts_with("v2/env/") || key.starts_with("v2/secret/") || key.starts_with("v2/member/")
+    key == keys::PROJECT
+        || key.starts_with("v2/env/")
+        || key.starts_with("v2/secret/")
+        || key.starts_with("v2/member/")
+        || key.starts_with("v2/activity/")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1693,6 +1711,7 @@ fn plan_reconcile(
             _ => {}
         }
     }
+    sync_activity(db, inner, project_id, entries, &grants, admitted, &mut plan)?;
     Ok(plan)
 }
 
@@ -1820,8 +1839,49 @@ fn apply_remote_secret(db: &Db, project_id: &str, r: &WSecret, local: Option<&WS
             return Ok(false);
         }
     }
-    yasecret_core::audit::append(db, SYNC_ACTOR, "synced_secret", "secret", &r.id, Some(&r.key))?;
+    // The activity entry comes from the device that made the change (see sync_activity).
     Ok(true)
+}
+
+/// Publishes this device's activity on the project and records other devices'.
+fn sync_activity(
+    db: &Db,
+    inner: &Inner,
+    project_id: &str,
+    entries: &[RawEntry],
+    grants: &HashMap<String, WGrant>,
+    admitted: bool,
+    plan: &mut Plan,
+) -> Result<()> {
+    let published: HashSet<String> = entries.iter().filter_map(|e| e.key.strip_prefix("v2/activity/").map(String::from)).collect();
+    if admitted {
+        for a in yasecret_core::audit::unpublished(db, project_id, &published, 200)? {
+            let w = WActivity {
+                id: a.id.clone(),
+                action: a.action,
+                target_type: a.target_type,
+                target_id: a.target_id,
+                timestamp: a.timestamp,
+                detail: a.detail,
+                by: inner.my_peer.clone(),
+            };
+            plan.pushes.push((keys::activity(&a.id), serde_json::to_vec(&w)?));
+        }
+    }
+    let names: HashMap<String, String> = members_from(entries, grants, &inner.my_peer).into_iter().map(|m| (m.peer_id, m.name)).collect();
+    for e in entries.iter().filter(|e| e.key.starts_with("v2/activity/")) {
+        let Ok(a) = serde_json::from_slice::<WActivity>(&e.content) else { continue };
+        // Only the device itself may publish its activity.
+        let from_that_device = grants.get(&a.by).is_some_and(|g| g.author == e.author && g.level != LEVEL_REMOVED);
+        if a.by == inner.my_peer || !from_that_device || e.key != keys::activity(&a.id) {
+            continue;
+        }
+        let name = names.get(&a.by).map(String::as_str).unwrap_or("another device");
+        if yasecret_core::audit::insert_remote(db, &a.id, &a.action, &a.target_type, &a.target_id, a.timestamp, a.detail.as_deref(), &a.by, name)? {
+            plan.changed_local = true;
+        }
+    }
+    Ok(())
 }
 
 /// Owner side: grant access to members who proved they hold the project key and match a

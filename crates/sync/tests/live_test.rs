@@ -134,6 +134,12 @@ fn share_join_edit_delete_roundtrip() {
     }
     member.svc().notify_local_change(&pid);
     eventually("owner sees member's edit", 30, || owner.value(&pid, &dev_id, "API_KEY").as_deref() == Some("v2"));
+    eventually("owner's activity shows the member's edit, by name", 30, || {
+        yasecret_core::audit::list(&owner.db(), 100)
+            .unwrap()
+            .iter()
+            .any(|a| a.action == "updated_secret" && a.actor_name.as_deref() == Some("member-mac"))
+    });
 
     // Owner deletes a variable and adds an environment → member follows.
     let staging_id = {

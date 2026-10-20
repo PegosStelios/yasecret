@@ -58,7 +58,7 @@ struct ActivitySheet: View {
                     }
                     .width(min: 200, ideal: 270)
                     TableColumn("Who") { a in
-                        Text(a.fromSync ? "Teammate (synced)" : (a.byMe ? "You" : "Teammate"))
+                        Text(a.device ?? (a.fromSync ? "Teammate (synced)" : (a.byMe ? "You" : "Teammate")))
                             .foregroundStyle(.secondary)
                     }
                     .width(min: 70, ideal: 90, max: 120)

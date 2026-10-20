@@ -107,6 +107,9 @@ pub struct AuditEntry {
     pub target_id: String,
     pub timestamp: i64,
     pub detail: Option<String>,
+    /// For activity from another device of a shared project: its device code and name.
+    pub origin: Option<String>,
+    pub actor_name: Option<String>,
 }
 
 pub fn now() -> i64 {

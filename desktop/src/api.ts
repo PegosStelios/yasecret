@@ -9,7 +9,7 @@ export type ImportRow = { key: string; value: string; exists: boolean; suggested
 export type ImportItem = { key: string; value: string; isSecret: boolean };
 export type ImportSummary = { added: number; updated: number; skipped: number };
 export type Version = { id: string; value: string; changedAt: number; byMe: boolean; note: string | null };
-export type Activity = { id: string; timestamp: number; action: string; targetLabel: string; byMe: boolean; fromSync: boolean };
+export type Activity = { id: string; timestamp: number; action: string; targetLabel: string; byMe: boolean; fromSync: boolean; device: string | null };
 export type DiffRow = {
   key: string;
   status: "same" | "different" | "only_left" | "only_right";

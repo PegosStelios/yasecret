@@ -605,7 +605,7 @@ export function ActivitySheet({ project, onClose }: { project: Project; onClose:
                 <td className="text-muted" title={formatDate(a.timestamp)}>{relativeTime(a.timestamp)}</td>
                 <td>{ACTIONS[a.action] ?? a.action}</td>
                 <td className="truncate font-mono" title={a.targetLabel}>{a.targetLabel}</td>
-                <td className="text-muted">{a.fromSync ? "Teammate (synced)" : a.byMe ? "You" : "Teammate"}</td>
+                <td className="text-muted">{a.device ?? (a.fromSync ? "Teammate (synced)" : a.byMe ? "You" : "Teammate")}</td>
               </tr>
             ))}
           </tbody>

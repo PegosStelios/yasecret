@@ -169,7 +169,10 @@ pub struct FfiActivity {
     pub action: String,
     pub target_label: String,
     pub by_me: bool,
+    /// Recorded when a change synced in, by versions that didn't sync activity.
     pub from_sync: bool,
+    /// For a shared project: the name of the other device it happened on.
+    pub device: Option<String>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -574,8 +577,9 @@ impl YasecretSession {
                 timestamp: a.timestamp,
                 action: a.action,
                 target_label: label,
-                by_me: a.peer_id == me,
+                by_me: a.origin.is_none() && a.peer_id == me,
                 from_sync: a.peer_id == yasecret_sync::live::SYNC_ACTOR,
+                device: a.actor_name,
             });
             if out.len() >= limit as usize {
                 break;

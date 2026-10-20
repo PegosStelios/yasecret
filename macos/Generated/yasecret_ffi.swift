@@ -1251,17 +1251,31 @@ public struct FfiActivity {
     public var action: String
     public var targetLabel: String
     public var byMe: Bool
+    /**
+     * Recorded when a change synced in, by versions that didn't sync activity.
+     */
     public var fromSync: Bool
+    /**
+     * For a shared project: the name of the other device it happened on.
+     */
+    public var device: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, timestamp: Int64, action: String, targetLabel: String, byMe: Bool, fromSync: Bool) {
+    public init(id: String, timestamp: Int64, action: String, targetLabel: String, byMe: Bool, 
+        /**
+         * Recorded when a change synced in, by versions that didn't sync activity.
+         */fromSync: Bool, 
+        /**
+         * For a shared project: the name of the other device it happened on.
+         */device: String?) {
         self.id = id
         self.timestamp = timestamp
         self.action = action
         self.targetLabel = targetLabel
         self.byMe = byMe
         self.fromSync = fromSync
+        self.device = device
     }
 }
 
@@ -1287,6 +1301,9 @@ extension FfiActivity: Equatable, Hashable {
         if lhs.fromSync != rhs.fromSync {
             return false
         }
+        if lhs.device != rhs.device {
+            return false
+        }
         return true
     }
 
@@ -1297,6 +1314,7 @@ extension FfiActivity: Equatable, Hashable {
         hasher.combine(targetLabel)
         hasher.combine(byMe)
         hasher.combine(fromSync)
+        hasher.combine(device)
     }
 }
 
@@ -1313,7 +1331,8 @@ public struct FfiConverterTypeFfiActivity: FfiConverterRustBuffer {
                 action: FfiConverterString.read(from: &buf), 
                 targetLabel: FfiConverterString.read(from: &buf), 
                 byMe: FfiConverterBool.read(from: &buf), 
-                fromSync: FfiConverterBool.read(from: &buf)
+                fromSync: FfiConverterBool.read(from: &buf), 
+                device: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -1324,6 +1343,7 @@ public struct FfiConverterTypeFfiActivity: FfiConverterRustBuffer {
         FfiConverterString.write(value.targetLabel, into: &buf)
         FfiConverterBool.write(value.byMe, into: &buf)
         FfiConverterBool.write(value.fromSync, into: &buf)
+        FfiConverterOptionString.write(value.device, into: &buf)
     }
 }
 

@@ -91,7 +91,7 @@ docker run --rm -v yasecret-relay:/data yasecret-relay add 'yasecret://relay?...
 
 The relay gets a read-only copy of the project document and never receives the project key. Project, environment, variable and member records are sealed with that key, so it can't read names or values; it can see how many records there are, device IDs and access levels, and the name you gave the relay. New invite links include the relay, so teammates can join and pick up changes while the owner is offline; the owner admits them the next time they're online (up to a week after the invite expires). Removing a relay stops members from dialing it, but it keeps what it already stored and devices that remember it may keep syncing with it; to cut a relay off completely, stop sharing and share the project again.
 
-Limitations: without a relay, the owner's device must be online for someone to join. Only the owner and co-owners can invite or change access. Activity logs are kept per device.
+Limitations: without a relay, the owner's device must be online for someone to join. Only the owner and co-owners can invite or change access. Activity is shared: each device publishes its own entries (sealed, like everything else) and others show them under that device's name.
 
 ## CLI
 

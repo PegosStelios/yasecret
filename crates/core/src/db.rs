@@ -160,6 +160,9 @@ impl Db {
         self.add_column("environment", "inherits_from", "TEXT")?;
         // Optional type checked whenever the value changes (see vartype).
         self.add_column("secret", "value_type", "TEXT")?;
+        // Activity synced from other devices of a shared project.
+        self.add_column("audit_entry", "origin", "TEXT")?;
+        self.add_column("audit_entry", "actor_name", "TEXT")?;
         self.conn.execute_batch("
             CREATE TABLE IF NOT EXISTS tombstone (
                 id         TEXT PRIMARY KEY,
